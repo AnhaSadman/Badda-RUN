@@ -41,90 +41,14 @@ bullets = []
 bullet_speed = 1000
 bullet_size = 10
 
-
-# Enemies
-enemies = []
-MAX_ENEMIES = 5
-enemy_speed = 20
-enemy_body_radius = 35
-enemy_head_radius = 20
-enemy_spawn_distance = 250
-
-
 # Game State
 game_over = False
 game_paused = False
 last_time = time.perf_counter()
 
 
-# Cheat Mode
-cheat_mode = False
-cheat_rotation_speed = 120
-cheat_shoot_interval = 0.15
-cheat_shoot_timer = 0
-gun_follow = True
-locked_camera_angle = 0
 
-def cheat_find_target():
 
-    if len(enemies) == 0:
-        return None
-
-    angle = math.radians(player_angle)
-
-    # Current gun direction
-    forward_x = -math.sin(angle)
-    forward_y = math.cos(angle)
-
-    best_enemy = None
-    best_angle_difference = 360
-    best_distance = float("inf")
-
-    for enemy in enemies:
-
-        dx = enemy["x"] - player_pos[0]
-        dy = enemy["y"] - player_pos[1]
-
-        distance = math.sqrt(
-            dx * dx +
-            dy * dy
-        )
-
-        if distance == 0:
-            continue
-
-        enemy_x = dx / distance
-        enemy_y = dy / distance
-
-        dot = (
-            forward_x * enemy_x +
-            forward_y * enemy_y
-        )
-
-        dot = max(-1.0, min(1.0, dot))
-
-        angle_difference = math.degrees(
-            math.acos(dot)
-        )
-
-        # Enemy is somewhere in front
-        if angle_difference <= 15:
-
-            if angle_difference < best_angle_difference:
-
-                best_angle_difference = angle_difference
-                best_distance = distance
-                best_enemy = enemy
-
-            elif (
-                angle_difference == best_angle_difference
-                and distance < best_distance
-            ):
-
-                best_distance = distance
-                best_enemy = enemy
-
-    return best_enemy
 
 
 def shoot(is_cheat=False):
@@ -162,190 +86,7 @@ def shoot(is_cheat=False):
         "cheat": is_cheat
     })
 
-def update_cheat_mode(delta_time):
-
-    global player_angle
-    global cheat_shoot_timer
-
-    if not cheat_mode:
-        return
-
-
-    #clockwise rotation
-
-    player_angle -= cheat_rotation_speed * delta_time
-
-    if player_angle < 0:
-        player_angle += 360
-
-
-    #SHOOTING COOLDOWN
-
-    cheat_shoot_timer -= delta_time
-
-    if cheat_shoot_timer < 0:
-        cheat_shoot_timer = 0
-
-
-    #  FIND ENEMY 
-
-    target = cheat_find_target()
-
-    if target is None:
-        return
-
-
-    #  AIM EXACTLY AT TARGET 
-
-    dx = target["x"] - player_pos[0]
-    dy = target["y"] - player_pos[1]
-
-    distance = math.sqrt(
-        dx * dx +
-        dy * dy
-    )
-
-    if distance == 0:
-        return
-
-
-    # Convert target direction into our player angle system
-    target_angle = math.degrees(
-        math.atan2(
-            -dx,
-            dy
-        )
-    )
-
-    if target_angle < 0:
-        target_angle += 360
-
-
-    #  SHOOT 
-
-    if cheat_shoot_timer <= 0:
-
-        # Make the gun point exactly at the enemy
-        player_angle = target_angle
-
-        # Shoot using the gun's direction
-        shoot(True)
-
-        # Start cooldown
-        cheat_shoot_timer = cheat_shoot_interval
-
-def spawn_enemy():
-
-    global enemies
-
-    # Keep trying until we find a reasonable position
-    while True:
-
-        x = random.uniform(
-            -GRID_LENGTH + 100,
-            GRID_LENGTH - 100
-        )
-
-        y = random.uniform(
-            -GRID_LENGTH + 100,
-            GRID_LENGTH - 100
-        )
-
-        # Don't spawn directly on top of the player
-        distance_x = x - player_pos[0]
-        distance_y = y - player_pos[1]
-
-        distance = math.sqrt(
-            distance_x * distance_x +
-            distance_y * distance_y
-        )
-
-        if distance >= enemy_spawn_distance:
-            break
-
-
-    enemies.append({
-        "x": x,
-        "y": y,
-
-        # Animation value for black ball
-        "pulse": random.uniform(0, math.pi * 2)
-    })
-
-
-def maintain_enemies():
-
-    global enemies
-
-    while len(enemies) < MAX_ENEMIES:
-
-        spawn_enemy()
-
-
-def draw_enemies():
-
-    for enemy in enemies:
-
-        x = enemy["x"]
-        y = enemy["y"]
-
-
-        #  RED BODY 
-
-        pulse = enemy["pulse"]
-
-        # Red body continuously shrinks and expands
-        red_radius = 35 + 10 * (
-            (math.sin(pulse) + 1) / 2
-        )
-
-
-        glColor3f(1, 0, 0)
-
-        glPushMatrix()
-
-        glTranslatef(
-            x,
-            y,
-            red_radius
-        )
-
-        gluSphere(
-            gluNewQuadric(),
-            red_radius,
-            20,
-            20
-        )
-
-        glPopMatrix()
-
-
-
-        #  BLACK TOP 
-
-        # Black ball stays fixed size
-
-        black_radius = enemy_head_radius
-
-        glColor3f(0, 0, 0)
-
-        glPushMatrix()
-
-        glTranslatef(
-            x,
-            y,
-            red_radius * 2 + black_radius - 5
-        )
-
-        gluSphere(
-            gluNewQuadric(),
-            black_radius,
-            20,
-            20
-        )
-
-        glPopMatrix()
-        
+       
 def draw_bullets():
 
     for bullet in bullets:
@@ -371,82 +112,7 @@ def draw_bullets():
         glPopMatrix()
 
 
-def update_enemies(delta_time):
-
-    global game_over
-    global player_life_remaining
-
-    for enemy in enemies:
-        
-        enemy["pulse"] += 5 * delta_time
-        # Direction from enemy to current player
-
-        dx = player_pos[0] - enemy["x"]
-        dy = player_pos[1] - enemy["y"]
-
-
-        distance = math.sqrt(
-            dx * dx +
-            dy * dy
-        )
-
-
-        # Avoid division by zero
-
-        if distance > 0:
-
-            direction_x = dx / distance
-            direction_y = dy / distance
-
-
-            # Move toward player
-
-            enemy["x"] += (
-                direction_x *
-                enemy_speed *
-                delta_time
-            )
-
-            enemy["y"] += (
-                direction_y *
-                enemy_speed *
-                delta_time
-            )
-
-
-        #  CHECK PLAYER COLLISION 
-
-        dx = player_pos[0] - enemy["x"]
-        dy = player_pos[1] - enemy["y"]
-
-        distance = math.sqrt(
-            dx * dx +
-            dy * dy
-        )
-
-
-        if distance < enemy_body_radius + 30:
-
-            # Cheat mode is immune to enemy collision
-            if cheat_mode:
-                continue
-
-            # Player loses one life
-            player_life_remaining -= 1
-
-            # Remove this enemy so it does not repeatedly
-            # damage the player every frame
-            enemies.remove(enemy)
-
-            # Game ends when life reaches zero
-            if player_life_remaining <= 0:
-
-                player_life_remaining = 0
-
-                game_over = True
-
-            break
-    
+   
 
 def update_bullets(delta_time):
 
@@ -475,37 +141,6 @@ def update_bullets(delta_time):
             delta_time
         )
 
-
-        bullet_hit = False
-
-
-        #  CHECK ENEMY COLLISION 
-
-        for enemy in enemies:
-
-            dx = bullet["x"] - enemy["x"]
-            dy = bullet["y"] - enemy["y"]
-
-            distance = math.sqrt(
-                dx * dx +
-                dy * dy
-            )
-
-
-            if distance < enemy_body_radius + bullet_size:
-
-                game_score += 1
-
-                enemies.remove(enemy)
-
-                bullet_hit = True
-
-                break
-
-
-        # Bullet killed an enemy
-        if bullet_hit:
-            continue
 
 
         #  BULLET LEFT GRID 
@@ -677,23 +312,19 @@ def keyboardListener(key, x, y):
         game_score = 0
 
         bullets.clear()
-        enemies.clear()
 
         first_person = False
 
         camera_angle = 90
         camera_height = 500
 
-        # Reset cheat mode
-
-        cheat_mode = False
 
         # Reset automatic gun following
 
         gun_follow = True
         locked_camera_angle = 0
 
-        maintain_enemies()
+
 
         return
 
@@ -1269,7 +900,6 @@ def showScreen():
     show_status()
     draw_player()
     draw_bullets()
-    draw_enemies()
 
     # Swap buffers for smooth rendering (double buffering)
     glutSwapBuffers()
@@ -1297,17 +927,10 @@ def animate():
 
     if not game_over and not game_paused:
 
-        # Cheat mode
-        update_cheat_mode(delta_time)
-
-        # Enemies
-        update_enemies(delta_time)
-
         # Bullets
         update_bullets(delta_time)
 
-        # Keep 5 enemies
-        maintain_enemies()
+    
 
 
     glutPostRedisplay()    
@@ -1320,7 +943,6 @@ def main():
     glutInitWindowPosition(0, 0)  # Window position
     wind = glutCreateWindow(b"3D OpenGL Intro")  # Create the window
     glEnable(GL_DEPTH_TEST)
-    maintain_enemies()
     glutDisplayFunc(showScreen)  # Register display function
     glutKeyboardFunc(keyboardListener)  # Register keyboard listener
     glutSpecialFunc(specialKeyListener)
