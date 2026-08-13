@@ -7,6 +7,7 @@ from OpenGL.GLU import *
 import random
 from world import drawWORLD
 
+
 # Camera
 
 camera_radius = 700
@@ -39,8 +40,18 @@ PLAYER_LIMIT = GRID_LENGTH - 80
 
 # Bullets
 bullets = []
-bullet_speed = 5000
+bullet_speed = 1000
 bullet_size = 10
+
+
+# Enemies
+enemies = []
+MAX_ENEMIES = 5
+enemy_speed = 20
+enemy_body_radius = 35
+enemy_head_radius = 20
+enemy_spawn_distance = 250
+
 
 # Game State
 game_over = False
@@ -48,7 +59,13 @@ game_paused = False
 last_time = time.perf_counter()
 
 
-
+# Cheat Mode
+cheat_mode = False
+cheat_rotation_speed = 120
+cheat_shoot_interval = 0.15
+cheat_shoot_timer = 0
+gun_follow = True
+locked_camera_angle = 0
 
 
 
@@ -87,7 +104,7 @@ def shoot(is_cheat=False):
         "cheat": is_cheat
     })
 
-       
+        
 def draw_bullets():
 
     for bullet in bullets:
@@ -113,7 +130,7 @@ def draw_bullets():
         glPopMatrix()
 
 
-   
+ 
 
 def update_bullets(delta_time):
 
@@ -142,6 +159,37 @@ def update_bullets(delta_time):
             delta_time
         )
 
+
+        bullet_hit = False
+
+
+        #  CHECK ENEMY COLLISION 
+
+        for enemy in enemies:
+
+            dx = bullet["x"] - enemy["x"]
+            dy = bullet["y"] - enemy["y"]
+
+            distance = math.sqrt(
+                dx * dx +
+                dy * dy
+            )
+
+
+            if distance < enemy_body_radius + bullet_size:
+
+                game_score += 1
+
+                enemies.remove(enemy)
+
+                bullet_hit = True
+
+                break
+
+
+        # Bullet killed an enemy
+        if bullet_hit:
+            continue
 
 
         #  BULLET LEFT GRID 
@@ -199,8 +247,6 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     glMatrixMode(GL_MODELVIEW)
 
 
-    
-    
 
 def keyboardListener(key, x, y):
     global cheat_shoot_timer
@@ -232,19 +278,23 @@ def keyboardListener(key, x, y):
         game_score = 0
 
         bullets.clear()
+        enemies.clear()
 
         first_person = False
 
         camera_angle = 90
         camera_height = 500
 
+        # Reset cheat mode
+
+        cheat_mode = False
 
         # Reset automatic gun following
 
         gun_follow = True
         locked_camera_angle = 0
 
-
+        
 
         return
 
@@ -846,11 +896,10 @@ def animate():
 
 
     if not game_over and not game_paused:
-
         # Bullets
         update_bullets(delta_time)
 
-    
+ 
 
 
     glutPostRedisplay()    
