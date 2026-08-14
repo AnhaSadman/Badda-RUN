@@ -709,7 +709,13 @@ def show_status():
 
 def showScreen():
 
-    # Clear color and depth buffers
+    #SKY
+    glClearColor(
+        0.22,
+        0.42,
+        0.72,
+        1.0
+    )
 
     glClear(
         GL_COLOR_BUFFER_BIT |
