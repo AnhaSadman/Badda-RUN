@@ -10,9 +10,10 @@ from draw_player import draw_player
 
 # Camera
 
-camera_radius = 180
-camera_angle = 90
-camera_height = 110
+camera_radius = 120
+camera_angle = 0
+camera_height = 85
+
 first_person = False
 fovY = 120
 
@@ -514,26 +515,52 @@ def setupCamera():
     global camera_height
     global first_person
 
+    # ========================================================
+    # PROJECTION
+    # ========================================================
+
     glMatrixMode(GL_PROJECTION)
+
     glLoadIdentity()
 
     aspect_ratio = screen_width / screen_height
-    gluPerspective(fovY, aspect_ratio, 0.1, 5000)
+
+    gluPerspective(
+        fovY,
+        aspect_ratio,
+        0.1,
+        5000
+    )
 
     glMatrixMode(GL_MODELVIEW)
+
     glLoadIdentity()
 
 
+    # ========================================================
+    # FPP
+    # ========================================================
+
     if first_person:
 
-        #  FIRST PERSON CAMERA 
+        # ----------------------------------------------------
+        # PLAYER FORWARD DIRECTION
+        # ----------------------------------------------------
+        #
+        # KEEP YOUR WORKING A3 CONVENTION.
+        # ----------------------------------------------------
 
-        # Camera position always stays with the player
-
-        angle = math.radians(player_angle)
+        angle = math.radians(
+            player_angle
+        )
 
         forward_x = -math.sin(angle)
         forward_y = math.cos(angle)
+
+
+        # ----------------------------------------------------
+        # CAMERA POSITION
+        # ----------------------------------------------------
 
         eye_x = (
             player_pos[0] +
@@ -545,23 +572,32 @@ def setupCamera():
             forward_y * 5
         )
 
+        # Player is now approximately 40 units tall.
+        # Put the camera near the head.
+
         eye_z = 32
-        
-        #  CAMERA LOOK DIRECTION 
+
+
+        # ----------------------------------------------------
+        # CAMERA LOOK DIRECTION
+        # ----------------------------------------------------
 
         if cheat_mode and gun_follow:
 
-            # Camera follows the gun
+            # Existing cheat + FPP gun-follow behavior.
+
             camera_direction_angle = player_angle
 
         elif cheat_mode and not gun_follow:
 
-            # Camera stays locked
+            # Existing locked-camera behavior.
+
             camera_direction_angle = locked_camera_angle
 
         else:
 
-            # Normal FPP camera follows player
+            # Normal FPP follows player.
+
             camera_direction_angle = player_angle
 
 
@@ -569,15 +605,31 @@ def setupCamera():
             camera_direction_angle
         )
 
-        look_x_direction = -math.sin(camera_direction)
-        look_y_direction = math.cos(camera_direction)
+
+        look_x_direction = (
+            -math.sin(camera_direction)
+        )
+
+        look_y_direction = (
+            math.cos(camera_direction)
+        )
 
 
-        look_x = eye_x + look_x_direction * 500
-        look_y = eye_y + look_y_direction * 500
+        look_x = (
+            eye_x +
+            look_x_direction * 500
+        )
+
+        look_y = (
+            eye_y +
+            look_y_direction * 500
+        )
+
         look_z = eye_z
-        
+
+
         gluLookAt(
+
             eye_x,
             eye_y,
             eye_z,
@@ -592,29 +644,61 @@ def setupCamera():
         )
 
 
+    # ========================================================
+    # TPP
+    # ========================================================
+
+# ========================================================
+# TPP
+# ========================================================
+
     else:
 
-        angle = math.radians(camera_angle)
+        angle = math.radians(player_angle)
 
-        cam_x = camera_radius * math.cos(angle)
-        cam_y = camera_radius * math.sin(angle)
+        forward_x = -math.sin(angle)
+        forward_y = math.cos(angle)
+
+        # Opposite of player's forward direction
+        backward_x = -forward_x
+        backward_y = -forward_y
+
+        # Distance behind player
+        tpp_distance = 40
+
+        cam_x = (
+            player_pos[0] +
+            backward_x * tpp_distance
+        )
+
+        cam_y = (
+            player_pos[1] +
+            backward_y * tpp_distance
+        )
+
+        # Camera height
+        cam_z = 65
+
+        # Look slightly above player's feet
+        target_x = player_pos[0]
+        target_y = player_pos[1]
+        target_z = 22
 
         gluLookAt(
-
             cam_x,
             cam_y,
-            camera_height,
+            cam_z,
 
-            0,
-            0,
-            0,
+            target_x,
+            target_y,
+            target_z,
 
             0,
             0,
             1
         )
-
-
+        
+        
 def show_status():
     draw_text(10, 770, f"Player life Remaining: {player_life_remaining}")
     draw_text(10, 740, f"Game Score: {game_score}")
