@@ -5,23 +5,19 @@ from OpenGL.GLUT import *
 from OpenGL.GLUT import GLUT_BITMAP_HELVETICA_18
 from OpenGL.GLU import *
 import random
-from world import drawWORLD
+import world
 from draw_player import draw_player
 
 # Camera
 
-camera_radius = 700
+camera_radius = 180
 camera_angle = 90
-camera_height = 500
+camera_height = 110
 first_person = False
 fovY = 120
 
 
 # Game Map
-
-GRID_LENGTH = 700
-GRID_SIZE = 15
-
 screen_width = 0
 screen_height = 0
 
@@ -36,15 +32,15 @@ player_bullet_missed = 0
 # Player
 player_pos = [0, 0, 0]
 player_angle = 0
-player_speed = 30
-rotation_speed = 10
-PLAYER_LIMIT = GRID_LENGTH - 80
+player_speed = 8
+rotation_speed = 5
+PLAYER_LIMIT = world.MAP_SIZE - 30
 
 
 # Bullets
 bullets = []
-bullet_speed = 1000
-bullet_size = 10
+bullet_speed = 300
+bullet_size = 2
 
 
 # Enemies
@@ -80,26 +76,61 @@ def shoot(is_cheat=False):
 
     global bullets
 
-    angle = math.radians(player_angle)
+    angle = math.radians(
+        player_angle
+    )
 
-    # Same direction as player movement and gun
+    # ========================================================
+    # SAME PLAYER FORWARD DIRECTION
+    # ========================================================
+
     forward_x = -math.sin(angle)
     forward_y = math.cos(angle)
 
-    # Start at the gun muzzle
+
+    # ========================================================
+    # SMALL PLAYER / SMALL GUN
+    # ========================================================
+    #
+    # Original gun muzzle distance:
+    # approximately 100
+    #
+    # Player scale:
+    # 0.15
+    #
+    # New muzzle distance:
+    # 100 * 0.15 = 15
+    #
+    # The bullet therefore starts at the actual scaled gun
+    # muzzle instead of 100 units away from the tiny player.
+    # ========================================================
+
+    gun_muzzle_distance = 15
+
     start_x = (
         player_pos[0] +
-        forward_x * 100
+        forward_x *
+        gun_muzzle_distance
     )
 
     start_y = (
         player_pos[1] +
-        forward_y * 100
+        forward_y *
+        gun_muzzle_distance
     )
 
-    start_z = 160
+
+    # Original muzzle height:
+    # 160
+    #
+    # Scaled:
+    # 160 * 0.15 = 24
+
+    start_z = 24
+
 
     bullets.append({
+
         "x": start_x,
         "y": start_y,
         "z": start_z,
@@ -107,10 +138,9 @@ def shoot(is_cheat=False):
         "dx": forward_x,
         "dy": forward_y,
 
-        # Remember whether this is a cheat bullet
         "cheat": is_cheat
-    })
 
+    })
         
 def draw_bullets():
 
@@ -202,8 +232,8 @@ def update_bullets(delta_time):
         #  BULLET LEFT GRID 
 
         if (
-            abs(bullet["x"]) > GRID_LENGTH or
-            abs(bullet["y"]) > GRID_LENGTH
+            abs(bullet["x"]) > world.MAP_SIZE or
+            abs(bullet["y"]) > world.MAP_SIZE
         ):
 
             # ONLY normal bullets count as misses
@@ -488,7 +518,7 @@ def setupCamera():
     glLoadIdentity()
 
     aspect_ratio = screen_width / screen_height
-    gluPerspective(fovY, aspect_ratio, 0.1, 3000)
+    gluPerspective(fovY, aspect_ratio, 0.1, 5000)
 
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
@@ -505,9 +535,17 @@ def setupCamera():
         forward_x = -math.sin(angle)
         forward_y = math.cos(angle)
 
-        eye_x = player_pos[0] + forward_x * 35
-        eye_y = player_pos[1] + forward_y * 35
-        eye_z = 215
+        eye_x = (
+            player_pos[0] +
+            forward_x * 5
+        )
+
+        eye_y = (
+            player_pos[1] +
+            forward_y * 5
+        )
+
+        eye_z = 32
         
         #  CAMERA LOOK DIRECTION 
 
@@ -586,22 +624,48 @@ def show_status():
  
 
 def showScreen():
+
     # Clear color and depth buffers
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-    glLoadIdentity()  # Reset modelview matrix
-    glViewport(0, 0, screen_width, screen_height)  # Set viewport size
 
-    setupCamera()  # Configure camera perspective
+    glClear(
+        GL_COLOR_BUFFER_BIT |
+        GL_DEPTH_BUFFER_BIT
+    )
 
-    # Draw the grid (game floor)
-    drawWORLD(GRID_LENGTH, GRID_SIZE)
+    glLoadIdentity()
+
+
+    # Use current monitor/window size
+
+    glViewport(
+        0,
+        0,
+        screen_width,
+        screen_height
+    )
+
+
+    # Camera
+
+    setupCamera()
+
+    world.world_player_x = player_pos[0]
+    world.world_player_y = player_pos[1]
+
+    world.drawWORLD()
+
     show_status()
-    draw_player(player_pos,player_angle,first_person,game_over)
+
+    draw_player(
+        player_pos,
+        player_angle,
+        first_person,
+        game_over
+    )
+
     draw_bullets()
 
-    # Swap buffers for smooth rendering (double buffering)
     glutSwapBuffers()
-
 
 
 

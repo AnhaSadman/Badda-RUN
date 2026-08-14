@@ -454,6 +454,6 @@ def draw_car(car_x,car_y,car_angle):
 
     glPopMatrix()
 
-def drawWORLD(GRID_LENGTH,GRID_SIZE):
+def drawWORLD():
     draw_ground()
     draw_city()
