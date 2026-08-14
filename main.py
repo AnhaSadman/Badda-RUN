@@ -31,7 +31,7 @@ player_bullet_missed = 0
 
 
 # Player
-player_pos = [0, 0, 0]
+player_pos = [100, 150, 0]
 player_angle = 0
 player_speed = 8
 rotation_speed = 5
@@ -313,7 +313,7 @@ def keyboardListener(key, x, y):
 
     if key == b'r' or key == b'R':
 
-        player_pos = [0, 0, 0]
+        player_pos = [100, 150, 0]
         player_angle = 0
         player_life_remaining = 5
         game_over = False
