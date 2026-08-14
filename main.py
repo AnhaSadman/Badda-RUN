@@ -677,7 +677,7 @@ def setupCamera():
         )
 
         # Camera height
-        cam_z = 65
+        cam_z = 50
 
         # Look slightly above player's feet
         target_x = player_pos[0]
