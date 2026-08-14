@@ -642,16 +642,7 @@ def setupCamera():
             0,
             1
         )
-
-
-    # ========================================================
-    # TPP
-    # ========================================================
-
-# ========================================================
-# TPP
-# ========================================================
-
+#TPP
     else:
 
         angle = math.radians(player_angle)
@@ -700,9 +691,9 @@ def setupCamera():
         
         
 def show_status():
-    draw_text(10, 770, f"Player life Remaining: {player_life_remaining}")
-    draw_text(10, 740, f"Game Score: {game_score}")
-    draw_text(10, 710, f"Player Bullet Missed: {player_bullet_missed}")
+    draw_text(10, screen_height - 30, f"Player life Remaining: {player_life_remaining}")
+    draw_text(10, screen_height - 60, f"Game Score: {game_score}")
+    draw_text(10, screen_height - 90, f"Player Bullet Missed: {player_bullet_missed}")
     
     
  
