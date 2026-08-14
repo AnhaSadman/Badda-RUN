@@ -22,6 +22,9 @@ fovY = 120
 GRID_LENGTH = 700
 GRID_SIZE = 15
 
+screen_width = 0
+screen_height = 0
+
 
 # Game Stats
 
@@ -68,6 +71,10 @@ gun_follow = True
 locked_camera_angle = 0
 
 
+def initialize():
+    global screen_width, screen_height
+    screen_width = glutGet(GLUT_SCREEN_WIDTH)
+    screen_height = glutGet(GLUT_SCREEN_HEIGHT)
 
 def shoot(is_cheat=False):
 
@@ -228,7 +235,12 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     glLoadIdentity()
     
     # Set up an orthographic projection that matches window coordinates
-    gluOrtho2D(0, 1000, 0, 800)  # left, right, bottom, top
+    gluOrtho2D(
+        0,
+        screen_width,
+        0,
+        screen_height
+    )  # left, right, bottom, top
 
     
     glMatrixMode(GL_MODELVIEW)
@@ -475,7 +487,8 @@ def setupCamera():
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
 
-    gluPerspective(fovY,1.25,0.1,3000)
+    aspect_ratio = screen_width / screen_height
+    gluPerspective(fovY, aspect_ratio, 0.1, 3000)
 
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
@@ -573,15 +586,10 @@ def show_status():
  
 
 def showScreen():
-    """
-    Display function to render the game scene:
-    - Clears the screen and sets up the camera.
-    - Draws everything of the screen
-    """
     # Clear color and depth buffers
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()  # Reset modelview matrix
-    glViewport(0, 0, 1000, 800)  # Set viewport size
+    glViewport(0, 0, screen_width, screen_height)  # Set viewport size
 
     setupCamera()  # Configure camera perspective
 
@@ -627,8 +635,9 @@ def animate():
 # Main function to set up OpenGL window and loop
 def main():
     glutInit()
+    initialize()
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH)  # Double buffering, RGB color, depth test
-    glutInitWindowSize(1000, 800)  # Window size
+    glutInitWindowSize(screen_width, screen_height)
     glutInitWindowPosition(0, 0)  # Window position
     wind = glutCreateWindow(b"3D OpenGL Intro")  # Create the window
     glEnable(GL_DEPTH_TEST)
