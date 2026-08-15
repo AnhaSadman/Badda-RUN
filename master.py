@@ -974,21 +974,211 @@ def setupCamera():
             0, 0, 1,
         )
 
+def draw_minimap():
+    if screen_width==0 or screen_height==0:
+        return
+
+    # Follow player or car
+    if player_in_car:
+        px,py=car_x,car_y
+    else:
+        px,py=player_pos[0],player_pos[1]
+
+    map_size=220
+    margin=20
+    bottom_offset=60
+    minimap_range=500
+
+    # Bottom-left minimap
+    glViewport(margin,margin+bottom_offset,map_size,map_size)
+
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    glOrtho(-minimap_range,minimap_range,-minimap_range,minimap_range,0.1,3000)
+
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    gluLookAt(px,py,1200,px,py,0,0,1,0)
+
+    # Background
+    glDisable(GL_DEPTH_TEST)
+    glColor3f(0.05,0.05,0.06)
+    glBegin(GL_QUADS)
+    glVertex3f(px-minimap_range,py-minimap_range,-5)
+    glVertex3f(px+minimap_range,py-minimap_range,-5)
+    glVertex3f(px+minimap_range,py+minimap_range,-5)
+    glVertex3f(px-minimap_range,py+minimap_range,-5)
+    glEnd()
+    glEnable(GL_DEPTH_TEST)
+
+    # Ground and roads
+    draw_ground()
+
+    # Minimap road lines
+    glDisable(GL_DEPTH_TEST)
+    glColor3f(1,0.9,0.1)
+
+    for road in range(-MAP_SIZE,MAP_SIZE+1,BLOCK_SPACING):
+        for p in range(-MAP_SIZE,MAP_SIZE,80):
+            glBegin(GL_QUADS)
+
+            glVertex3f(road-3,p,15)
+            glVertex3f(road+3,p,15)
+            glVertex3f(road+3,p+38,15)
+            glVertex3f(road-3,p+38,15)
+
+            glVertex3f(p,road-3,15)
+            glVertex3f(p+38,road-3,15)
+            glVertex3f(p+38,road+3,15)
+            glVertex3f(p,road+3,15)
+
+            glEnd()
+
+    glEnable(GL_DEPTH_TEST)
+
+    # Buildings
+    for bx,by,bw,bh,r,g,b,h in buildings:
+        glColor3f(r,g,b)
+        glBegin(GL_QUADS)
+        glVertex3f(bx-bw/2,by-bh/2,5)
+        glVertex3f(bx+bw/2,by-bh/2,5)
+        glVertex3f(bx+bw/2,by+bh/2,5)
+        glVertex3f(bx-bw/2,by+bh/2,5)
+        glEnd()
+
+    # Gas station marker
+    
+    gx,gy,gw,gh=interactive_zones["gas_station"]
+
+    glColor3f(1,0.15,0.15)
+    glBegin(GL_QUADS)
+    glVertex3f(gx-35,gy-22,12)
+    glVertex3f(gx+35,gy-22,12)
+    glVertex3f(gx+35,gy+22,12)
+    glVertex3f(gx-35,gy+22,12)
+    glEnd()
+
+    # Safe house marker
+    sx,sy,sw,sh=interactive_zones["safe_house"]
+
+    glColor3f(0.1,1,0.25)
+    glBegin(GL_QUADS)
+    glVertex3f(sx-35,sy-22,12)
+    glVertex3f(sx+35,sy-22,12)
+    glVertex3f(sx+35,sy+22,12)
+    glVertex3f(sx-35,sy+22,12)
+    glEnd()
+        
+    
+    # Car/player marker
+    if player_in_car:
+        glPushMatrix()
+        glTranslatef(px,py,20)
+        glRotatef(car_angle,0,0,1)
+
+        glColor3f(1,0,0)
+        glBegin(GL_QUADS)
+        glVertex3f(-10,-16,0)
+        glVertex3f(10,-16,0)
+        glVertex3f(10,16,0)
+        glVertex3f(-10,16,0)
+        glEnd()
+
+        glColor3f(0.1,0.1,0.1)
+        glBegin(GL_QUADS)
+        glVertex3f(-7,-5,1)
+        glVertex3f(7,-5,1)
+        glVertex3f(7,7,1)
+        glVertex3f(-7,7,1)
+        glEnd()
+
+        glPopMatrix()
+
+    else:
+        glPushMatrix()
+        glTranslatef(px,py,20)
+        glRotatef(player_angle,0,0,1)
+
+        # Player marker
+        glColor3f(0,0.8,1)
+        glBegin(GL_TRIANGLES)
+        glVertex3f(0,25,0)
+        glVertex3f(-17,-16,0)
+        glVertex3f(17,-16,0)
+        glEnd()
+
+        glPopMatrix()
+
+    # Restore minimap matrices
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
+    # Full screen
+    glViewport(0,0,screen_width,screen_height)
+
+    # Border projection
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0,screen_width,0,screen_height)
+
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    glDisable(GL_DEPTH_TEST)
+
+    x1=margin
+    y1=margin+bottom_offset
+    x2=margin+map_size
+    y2=margin+bottom_offset+map_size
+
+    # Outer black border
+    glColor3f(0,0,0)
+    glLineWidth(8)
+    glBegin(GL_LINE_LOOP)
+    glVertex2f(x1-4,y1-4)
+    glVertex2f(x2+4,y1-4)
+    glVertex2f(x2+4,y2+4)
+    glVertex2f(x1-4,y2+4)
+    glEnd()
+
+    # Inner white border
+    glColor3f(1,1,1)
+    glLineWidth(3)
+    glBegin(GL_LINE_LOOP)
+    glVertex2f(x1,y1)
+    glVertex2f(x2,y1)
+    glVertex2f(x2,y2)
+    glVertex2f(x1,y2)
+    glEnd()
+
+    glLineWidth(1)
+    glEnable(GL_DEPTH_TEST)
+
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
 
 def showScreen():
-    glClearColor(0.22, 0.42, 0.72, 1.0)
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glClearColor(0.22,0.42,0.72,1.0)
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
 
-    if screen_width > 0 and screen_height > 0:
-        glViewport(0, 0, screen_width, screen_height)
+    # Main view
+    if screen_width>0 and screen_height>0:
+        glViewport(0,0,screen_width,screen_height)
 
     setupCamera()
     drawWORLD()
-    show_status()
 
     if not player_in_car:
-        draw_player(player_pos, player_angle, first_person, game_over)
+        draw_player(player_pos,player_angle,first_person,game_over)
 
     draw_car()
     draw_bullets()
@@ -996,7 +1186,15 @@ def showScreen():
     if game_menu_open:
         draw_pause_menu()
 
+    # Minimap
+    draw_minimap()
+
+    # HUD
+    glViewport(0,0,screen_width,screen_height)
+    show_status()
+
     glutSwapBuffers()
+
 
 
 def animate():
