@@ -6,7 +6,7 @@ from OpenGL.GLUT import *
 from OpenGL.GLUT import GLUT_BITMAP_HELVETICA_18
 from OpenGL.GLU import *
 
-# ===================== WORLD (was world.py) =====================
+#WORLD 
 
 MAP_SIZE = 1000
 ROAD_WIDTH = 100
@@ -312,7 +312,7 @@ def drawWORLD():
     draw_city()
 
 
-# ===================== PLAYER MODEL (was draw_player.py) =====================
+#PLAYER MODEL
 
 # scales the whole player model down so it looks right next to the city (original height ~270 units)
 PLAYER_SCALE = 0.15
@@ -417,7 +417,7 @@ def draw_player(player_pos, player_angle, first_person, game_over):
     glPopMatrix()
 
 
-# ===================== GAME (was main.py) =====================
+#GAME MAIN
 
 # camera
 camera_radius = 120
@@ -459,6 +459,8 @@ enemy_spawn_distance = 250
 game_over = False
 game_paused = False
 last_time = time.perf_counter()
+game_menu_open = False
+menu_buttons = {}
 
 # cheat mode
 cheat_mode = False
@@ -788,6 +790,80 @@ def show_status():
         cy = screen_height // 2
         draw_text(cx, cy, "PAUSED")
 
+def draw_pause_menu():
+    # semi-transparent full screen overlay with Restart / Resume / Exit buttons
+    if screen_width == 0 or screen_height == 0:
+        return
+
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, screen_width, 0, screen_height)
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glDisable(GL_DEPTH_TEST)
+    glLoadIdentity()
+
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+    # dim the whole screen
+    glColor4f(0, 0, 0, 0.65)
+    glBegin(GL_QUADS)
+    glVertex2f(0, 0)
+    glVertex2f(screen_width, 0)
+    glVertex2f(screen_width, screen_height)
+    glVertex2f(0, screen_height)
+    glEnd()
+
+    # three stacked buttons, centered on screen
+    btn_w, btn_h, gap = 220, 50, 20
+    cx = screen_width / 2
+    cy = screen_height / 2
+    labels = ["Restart", "Resume", "Exit"]
+    menu_buttons.clear()
+
+    for i, label in enumerate(labels):
+        top = cy + (1 - i) * (btn_h + gap)
+        bottom = top - btn_h
+        left = cx - btn_w / 2
+        right = cx + btn_w / 2
+
+        glColor4f(0.15, 0.15, 0.18, 0.9)
+        glBegin(GL_QUADS)
+        glVertex2f(left, bottom)
+        glVertex2f(right, bottom)
+        glVertex2f(right, top)
+        glVertex2f(left, top)
+        glEnd()
+
+        menu_buttons[label] = (left, bottom, right, top)
+
+    glDisable(GL_BLEND)
+    glEnable(GL_DEPTH_TEST)
+
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+    glPopMatrix()
+
+    # labels drawn after popping, draw_text sets up its own ortho each call
+    for label, (left, bottom, right, top) in menu_buttons.items():
+        text_x = left + btn_w / 2 - len(label) * 5
+        text_y = bottom + btn_h / 2 - 6
+        draw_text(text_x, text_y, label)
+
+
+def handle_menu_click(label):
+    # runs when a menu button is clicked
+    global game_menu_open
+    if label == "Restart":
+        RestartGame()
+        game_menu_open = False
+    elif label == "Resume":
+        game_menu_open = False
+    elif label == "Exit":
+        glutLeaveMainLoop()
 
 def _forward_from_angle(deg):
     rad = math.radians(deg)
@@ -876,6 +952,9 @@ def showScreen():
 
     draw_car()
     draw_bullets()
+    
+    if game_menu_open:
+        draw_pause_menu()
 
     glutSwapBuffers()
 
@@ -889,7 +968,7 @@ def animate():
 
     update_car()
 
-    if game_over or game_paused:
+    if game_over or game_paused or game_menu_open:
         glutPostRedisplay()
         return
 
@@ -970,9 +1049,19 @@ def keyboardListener(key, x, y):
     global cheat_mode, game_paused, gun_follow, locked_camera_angle
     global player_life_remaining, player_in_car
     global car_x, car_y, car_z, car_speed, car_angle
-    global cheat_shoot_timer
+    global cheat_shoot_timer, game_menu_open
 
     nk = key.lower() if isinstance(key, bytes) else key
+    
+    # esc toggles the pause menu
+    if key == b'\x1b':
+        global game_menu_open
+        game_menu_open = not game_menu_open
+        return
+
+    # block all other input while the menu is open
+    if game_menu_open:
+        return
 
     # restart, always available
     if nk in (b'r',):
@@ -1055,6 +1144,17 @@ def specialKeyListener(key, x, y):
 
 def mouseListener(button, state, x, y):
     global first_person
+
+    if game_menu_open:
+        if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
+            # glut gives y from the top, flip it to match our bottom-up button rects
+            click_y = screen_height - y
+            for label, (left, bottom, right, top) in menu_buttons.items():
+                if left <= x <= right and bottom <= click_y <= top:
+                    handle_menu_click(label)
+                    break
+        return
+
     if game_over:
         return
     if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
@@ -1063,6 +1163,7 @@ def mouseListener(button, state, x, y):
     if button == GLUT_RIGHT_BUTTON and state == GLUT_DOWN:
         if not game_paused:
             first_person = not first_person
+            
 
 
 def main():
