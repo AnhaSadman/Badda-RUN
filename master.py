@@ -75,6 +75,44 @@ def is_colliding(x, y, radius):
     return False
 
 
+def car_colliding(x,y,angle):
+    rad=math.radians(angle)
+    c=math.cos(rad)
+    s=math.sin(rad)
+    
+    half_w=26
+    half_l=42
+
+    corners=[
+        (-half_w,-half_l),
+        (half_w,-half_l),
+        (-half_w,half_l),
+        (half_w,half_l)
+    ]
+
+    car_points=[]
+    for lx,ly in corners:
+        px=x+lx*c-ly*s
+        py=y+lx*s+ly*c
+        car_points.append((px,py))
+
+    for bx,by,bw,bh in get_solid_boxes():
+        padding=6
+        left=bx-bw/2-padding
+        right=bx+bw/2+padding
+        bottom=by-bh/2-padding
+        top=by+bh/2+padding
+
+        for px,py in car_points:
+            if left<=px<=right and bottom<=py<=top:
+                return True
+
+        if left<=x<=right and bottom<=y<=top:
+            return True
+
+    return False
+
+
 def draw_cube(x, y, z, sx, sy, sz, color):
     glPushMatrix()
     glColor3f(*color)
@@ -975,15 +1013,15 @@ def draw_steering_wheel(angle_deg):
     glPopMatrix()
 
 def update_car():
-    global car_x, car_y, car_speed, car_angle
+    global car_x,car_y,car_speed,car_angle
 
     if not player_in_car:
         return
 
     if b'w' in pressed_keys:
-        car_speed = min(car_speed + car_acceleration, car_max_speed)
+        car_speed=min(car_speed+car_acceleration,car_max_speed)
     elif b's' in pressed_keys:
-        car_speed = max(car_speed - car_acceleration, -car_max_speed / 2)
+        car_speed=max(car_speed-car_acceleration,-car_max_speed/2)
     else:
         if car_speed > 0:
             car_speed = max(car_speed - car_friction, 0.0)
@@ -997,39 +1035,31 @@ def update_car():
         if b'd' in pressed_keys:
             car_angle -= car_turn_speed * turn_dir
 
-    angle_rad = math.radians(car_angle)
-    forward_x = -math.sin(angle_rad)
-    forward_y = math.cos(angle_rad)
+    rad=math.radians(car_angle)
+    forward_x=-math.sin(rad)
+    forward_y=math.cos(rad)
 
-    new_cx = car_x + forward_x * car_speed
-    new_cy = car_y + forward_y * car_speed
+    # Small steps stop wall tunneling
+    steps=max(1,int(abs(car_speed)//2)+1)
+    step_speed=car_speed/steps
+    limit=MAP_SIZE-50
 
-    limit = MAP_SIZE - 50
+    for i in range(steps):
+        new_x=car_x+forward_x*step_speed
+        new_y=car_y+forward_y*step_speed
+        new_x=max(-limit,min(new_x,limit))
+        new_y=max(-limit,min(new_y,limit))
 
-    # move on the x axis only if it stays in bounds and doesn't land inside a building
-    test_cx = new_cx
-    if abs(test_cx) > limit:
-        test_cx = max(-limit, min(test_cx, limit))
-        car_speed = 0
-    if is_colliding(test_cx, car_y, CAR_RADIUS):
-        car_speed = 0
-    else:
-        car_x = test_cx
+        if car_colliding(new_x,new_y,car_angle):
+            car_speed=0
+            break
 
-    # move on the y axis the same way, so the car slides along a wall instead of clipping through it
-    test_cy = new_cy
-    if abs(test_cy) > limit:
-        test_cy = max(-limit, min(test_cy, limit))
-        car_speed = 0
-    if is_colliding(car_x, test_cy, CAR_RADIUS):
-        car_speed = 0
-    else:
-        car_y = test_cy
+        car_x=new_x
+        car_y=new_y
 
-    # keep player glued to car
-    if player_in_car:
-        player_pos[0] = car_x
-        player_pos[1] = car_y
+    player_pos[0]=car_x
+    player_pos[1]=car_y
+
 
 
 def shoot(is_cheat=False):
@@ -1212,69 +1242,110 @@ def _forward_from_angle(deg):
     return -math.sin(rad), math.cos(rad)
 
 
-def setupCamera():
-    global camera_radius, camera_angle, camera_height
+def get_camera_distance(target_x,target_y,angle,max_distance):
+    rad=math.radians(angle)
+    dx=math.sin(rad)
+    dy=-math.cos(rad)
+    safe_distance=max_distance
 
-    if screen_height == 0:
+    # Check camera path
+    for distance in range(5,max_distance+1):
+        x=target_x+dx*distance
+        y=target_y+dy*distance
+        blocked=False
+
+        for bx,by,bw,bh in get_solid_boxes():
+            padding=18
+            if (bx-bw/2-padding<x<bx+bw/2+padding and
+                by-bh/2-padding<y<by+bh/2+padding):
+                blocked=True
+                break
+
+        if blocked:
+            safe_distance=max(3,distance-15)
+            break
+
+    return safe_distance
+    
+
+
+def setupCamera():
+    global camera_radius,camera_angle,camera_height
+    if screen_height==0:
         return
 
     glMatrixMode(GL_PROJECTION)
     glLoadIdentity()
-    gluPerspective(fovY, screen_width / screen_height, 0.1, 5000)
+    gluPerspective(60,screen_width/screen_height,0.1,5000)
     glMatrixMode(GL_MODELVIEW)
     glLoadIdentity()
 
+    # First person
     if first_person:
-        # first person works for both on-foot and in-car
         if player_in_car:
-            cam_angle_rad = math.radians(car_angle)
-            fx = -math.sin(cam_angle_rad)
-            fy = math.cos(cam_angle_rad)
-
-            eye_x = car_x + fx * 5
-            eye_y = car_y + fy * 5
-            eye_z = car_z + 22
-
-            look_dir = car_angle
+            cam_angle_rad=math.radians(car_angle)
+            fx=-math.sin(cam_angle_rad)
+            fy=math.cos(cam_angle_rad)
+            eye_x=car_x+fx*5
+            eye_y=car_y+fy*5
+            eye_z=car_z+22
+            look_dir=car_angle
         else:
-            fx, fy = _forward_from_angle(player_angle)
-            eye_x = player_pos[0] + fx * 5
-            eye_y = player_pos[1] + fy * 5
-            eye_z = 32
-
+            fx,fy=_forward_from_angle(player_angle)
+            eye_x=player_pos[0]+fx*5
+            eye_y=player_pos[1]+fy*5
+            eye_z=32
             if cheat_mode and not gun_follow:
-                look_dir = locked_camera_angle
+                look_dir=locked_camera_angle
             else:
-                look_dir = player_angle
+                look_dir=player_angle
 
-        lx, ly = _forward_from_angle(look_dir)
+        lx,ly=_forward_from_angle(look_dir)
         gluLookAt(
-            eye_x, eye_y, eye_z,
-            eye_x + lx * 500, eye_y + ly * 500, eye_z,
-            0, 0, 1,
+            eye_x,eye_y,eye_z,
+            eye_x+lx*500,eye_y+ly*500,eye_z,
+            0,0,1
         )
 
+    # Third person
     else:
-        # third person follows the car when in car, the player when on foot
         if player_in_car:
-            pivot_x, pivot_y = car_x, car_y
-            follow_angle = car_angle
+            target_x=car_x
+            target_y=car_y
+            target_angle=car_angle
         else:
-            pivot_x, pivot_y = player_pos[0], player_pos[1]
-            follow_angle = player_angle
+            target_x=player_pos[0]
+            target_y=player_pos[1]
+            target_angle=player_angle
 
-        fx, fy = _forward_from_angle(follow_angle)
+        max_distance=260
+        final_distance=get_camera_distance(
+            target_x,target_y,target_angle,max_distance
+        )
+        rad=math.radians(target_angle)
+        cam_x=target_x+math.sin(rad)*final_distance
+        cam_y=target_y-math.cos(rad)*final_distance
 
-        tpp_distance = 80
-        cam_x = pivot_x - fx * tpp_distance
-        cam_y = pivot_y - fy * tpp_distance
-        cam_z = 60
+        # Lower camera when close
+        distance_ratio=final_distance/max_distance
+        cam_z=45+85*distance_ratio
+
+        dynamic_fov=60+35*(1-distance_ratio)
+
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
+        gluPerspective(dynamic_fov,screen_width/screen_height,0.1,5000)
+        glMatrixMode(GL_MODELVIEW)
 
         gluLookAt(
-            cam_x, cam_y, cam_z,
-            pivot_x, pivot_y, 20,
-            0, 0, 1,
+            cam_x,cam_y,cam_z,
+            target_x,target_y,20,
+            0,0,1
         )
+
+
+        
+               
 
 def draw_minimap():
     if screen_width==0 or screen_height==0:
