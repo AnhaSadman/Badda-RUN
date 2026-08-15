@@ -587,15 +587,16 @@ def draw_car():
         glScalef(25, 27, 10)
         glutSolidCube(1)
         glPopMatrix()
+        
         # windshield
         glPushMatrix()
         glColor3f(0.18, 0.55, 0.75)
-        glTranslatef(0, 8, 20)
-        glRotatef(-28, 1, 0, 0)
-        glScalef(22, 3, 10)
+        glTranslatef(0, 7.8, 20)
+        glRotatef(28, 1, 0, 0)
+        glScalef(22, 0.5, 7)
         glutSolidCube(1)
         glPopMatrix()
-    
+
 
     # roof
     glPushMatrix()
@@ -609,7 +610,7 @@ def draw_car():
     glPushMatrix()
     glColor3f(0.15, 0.45, 0.65)
     glTranslatef(0, -18, 19)
-    glRotatef(28, 1, 0, 0)
+    glRotatef(-28, 1, 0, 0)
     glScalef(20, 3, 8)
     glutSolidCube(1)
     glPopMatrix()
@@ -642,6 +643,11 @@ def draw_car():
         glPopMatrix()
 
     # tail lights
+    
+    for lx in (-10, 10):
+        draw_cube(lx, -30.3, 8, 8 + 1.5, 2, 3 + 1.5, (0.03, 0.03, 0.03))
+        draw_cube(lx, -30.6, 8, 8, 2, 3, (1.0, 0.02, 0.02))
+    
     for lx in (-10, 10):
         glPushMatrix()
         glColor3f(1.0, 0.02, 0.02)
