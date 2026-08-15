@@ -455,7 +455,7 @@ def draw_player(player_pos, player_angle, first_person, game_over):
     glPopMatrix()
 
 
-#GAME MAIN
+#GAME MAIN GLOBALS
 
 # camera
 camera_radius = 120
@@ -519,11 +519,16 @@ car_acceleration = 0.5
 car_friction = 0.3
 car_turn_speed = 3
 
+#steering
+steering_wheel_angle = 0
+STEER_MAX = 33
+STEER_STEP = 6
+
 # pressed_keys is shared by on-foot movement and car movement
 player_in_car = False
 pressed_keys = set()
 
-# ===================== JUMP + RUN =====================
+#JUMP + RUN
 
 jumping = False
 jump_velocity = 0.0
@@ -533,6 +538,231 @@ JUMP_GRAVITY = 400.0
 JUMP_VELOCITY = (2.0 * JUMP_GRAVITY * JUMP_HEIGHT) ** 0.5
 
 RUN_SPEED = player_speed * 2
+
+#NPC CARS
+
+NPC_CAR_COUNT   = 20     # how many NPC cars to spawn
+NPC_CAR_SPEED   = 6.0    # cruising speed
+NPC_TURN_RATE   = 2.5    # degrees per frame when steering
+NPC_STUCK_TIME  = 1.8    # seconds before declaring stuck and forcing a turn
+
+def _random_npc_color():
+    # pick hue from safe zones — anything except reds (0-30° and 330-360°)
+    # green=90, cyan=180, blue=210, purple=270, yellow=60
+    safe_hues = [50, 60, 90, 140, 170, 180, 200, 210, 240, 260, 270, 290, 310]
+    h = random.choice(safe_hues) / 360.0
+    s = random.uniform(0.55, 1.0)
+    v = random.uniform(0.55, 1.0)
+
+    # simple HSV -> RGB
+    i = int(h * 6)
+    f = h * 6 - i
+    p = v * (1 - s)
+    q = v * (1 - f * s)
+    t = v * (1 - (1 - f) * s)
+    i = i % 6
+    r, g, b = [
+        (v, t, p), (q, v, p), (p, v, t),
+        (p, q, v), (t, p, v), (v, p, q)
+    ][i]
+
+    dark = (r * 0.55, g * 0.55, b * 0.55)
+    return (r, g, b), dark
+
+
+def _make_npc_car():
+    road_coords = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+    if random.choice([True, False]):
+        x = float(random.choice(road_coords))
+        y = float(random.randint(-MAP_SIZE + 50, MAP_SIZE - 50))
+    else:
+        x = float(random.randint(-MAP_SIZE + 50, MAP_SIZE - 50))
+        y = float(random.choice(road_coords))
+    angle = float(random.choice([0, 90, 180, 270]))
+    color, color_dark = _random_npc_color()
+    return {
+        "x": x, "y": y, "angle": angle,
+        "speed": NPC_CAR_SPEED,
+        "stuck_timer": 0.0,
+        "turn_dir": random.choice([-1, 1]),
+        "color": color,
+        "color_dark": color_dark,
+    }
+
+npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
+
+def draw_npc_car(npc):
+    """Draw one NPC car at its position using the same geometry as draw_car(),
+    but coloured blue.  The steering-wheel / first-person cabin bits are skipped."""
+    glPushMatrix()
+    glTranslatef(npc["x"], npc["y"], 0)
+    glRotatef(npc["angle"], 0, 0, 1)
+
+    # --- body ---
+    glColor3f(*npc["color"])
+    draw_car_body()
+
+    # hood
+    glPushMatrix()
+    glColor3f(*npc["color"])
+    glTranslatef(0, 20, 10)
+    glRotatef(-7, 1, 0, 0)
+    glScalef(30, 25, 3)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # cabin
+    glPushMatrix()
+    glColor3f(*npc["color_dark"])
+    glTranslatef(0, -6, 16)
+    glScalef(25, 27, 10)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # windshield
+    glPushMatrix()
+    glColor3f(0.18, 0.55, 0.75)
+    glTranslatef(0, 7.8, 20)
+    glRotatef(28, 1, 0, 0)
+    glScalef(22, 0.5, 7)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # roof  (use darker accent colour)
+    glPushMatrix()
+    glColor3f(*npc["color_dark"])
+    glTranslatef(0, -7, 23)
+    glScalef(19, 14, 2)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # rear glass
+    glPushMatrix()
+    glColor3f(*npc["color_dark"])
+    glTranslatef(0, -18, 19)
+    glRotatef(-28, 1, 0, 0)
+    glScalef(20, 3, 8)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # wheels and rims  (identical to player car)
+    q = gluNewQuadric()
+    for wx in (-18, 18):
+        for wy in (-20, 20):
+            glPushMatrix()
+            glColor3f(0.03, 0.03, 0.03)
+            glTranslatef(wx, wy, 6)
+            glRotatef(90, 0, 1, 0)
+            gluCylinder(q, 6, 6, 3, 16, 3)
+            glPopMatrix()
+
+            glPushMatrix()
+            glColor3f(0.7, 0.7, 0.72)
+            glTranslatef(wx * (18.2 / 18), wy, 6)
+            glRotatef(90, 0, 1, 0)
+            gluDisk(gluNewQuadric(), 0, 3.5, 12, 1)
+            glPopMatrix()
+
+    # headlights
+    for lx in (-10, 10):
+        glPushMatrix()
+        glColor3f(1.0, 0.95, 0.75)
+        glTranslatef(lx, 32, 8)
+        glScalef(8, 2, 3)
+        glutSolidCube(1)
+        glPopMatrix()
+
+    # tail lights
+    for lx in (-10, 10):
+        draw_cube(lx, -30.3, 8, 8 + 1.5, 2, 3 + 1.5, (0.03, 0.03, 0.03))
+        draw_cube(lx, -30.6, 8, 8, 2, 3, (1.0, 0.02, 0.02))
+
+    # side skirts
+    for sx in (-20, 20):
+        glPushMatrix()
+        glColor3f(0.04, 0.04, 0.05)
+        glTranslatef(sx, -1, 4)
+        glScalef(2, 45, 3)
+        glutSolidCube(1)
+        glPopMatrix()
+
+    # spoiler stands
+    for sx in (-10, 10):
+        glPushMatrix()
+        glColor3f(*npc["color_dark"])
+        glTranslatef(sx, -27, 15)
+        glScalef(2, 2, 9)
+        glutSolidCube(1)
+        glPopMatrix()
+
+    # spoiler wing
+    glPushMatrix()
+    glColor3f(*npc["color_dark"])
+    glTranslatef(0, -28, 19)
+    glScalef(28, 5, 2)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    glPopMatrix()
+
+def update_npc_cars(delta_time):
+    ROAD_COORDS = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+    SNAP_THRESHOLD = 8   # how close to a road center before we allow a turn
+
+    for npc in npc_cars:
+        angle_rad = math.radians(npc["angle"])
+        fx = -math.sin(angle_rad)
+        fy =  math.cos(angle_rad)
+
+        new_x = npc["x"] + fx * npc["speed"]
+        new_y = npc["y"] + fy * npc["speed"]
+
+        limit = MAP_SIZE - 50
+        blocked = (
+            abs(new_x) > limit or
+            abs(new_y) > limit or
+            is_colliding(new_x, new_y, CAR_RADIUS)
+        )
+
+        if blocked:
+            npc["stuck_timer"] += delta_time
+            if npc["stuck_timer"] >= 0.5:
+                npc["stuck_timer"] = 0.0
+                # reverse or turn 90 degrees away
+                npc["angle"] = (npc["angle"] + random.choice([90, 180, 270])) % 360
+                # snap back to nearest road so it doesn't drift into a building
+                nearest_rx = min(ROAD_COORDS, key=lambda r: abs(r - npc["x"]))
+                nearest_ry = min(ROAD_COORDS, key=lambda r: abs(r - npc["y"]))
+                a = npc["angle"] % 360
+                if a in (0, 180):      # moving along Y axis — snap X to road
+                    npc["x"] = float(nearest_rx)
+                else:                  # moving along X axis — snap Y to road
+                    npc["y"] = float(nearest_ry)
+        else:
+            npc["stuck_timer"] = 0.0
+            npc["x"] = new_x
+            npc["y"] = new_y
+
+            # at an intersection, randomly decide to turn or go straight
+            a = npc["angle"] % 360
+            if a in (0, 180):          # travelling along Y — check if on an X road line
+                on_x_road = any(abs(npc["x"] - rx) < SNAP_THRESHOLD for rx in ROAD_COORDS)
+                on_y_road = any(abs(npc["y"] - ry) < SNAP_THRESHOLD for ry in ROAD_COORDS)
+                if on_x_road and on_y_road and random.random() < 0.012:
+                    npc["x"] = float(min(ROAD_COORDS, key=lambda r: abs(r - npc["x"])))
+                    npc["angle"] = float(random.choice([90, 270]))
+            else:                      # travelling along X — check if on a Y road line
+                on_x_road = any(abs(npc["x"] - rx) < SNAP_THRESHOLD for rx in ROAD_COORDS)
+                on_y_road = any(abs(npc["y"] - ry) < SNAP_THRESHOLD for ry in ROAD_COORDS)
+                if on_x_road and on_y_road and random.random() < 0.012:
+                    npc["y"] = float(min(ROAD_COORDS, key=lambda r: abs(r - npc["y"])))
+                    npc["angle"] = float(random.choice([0, 180]))
+
+
+def draw_npc_cars():
+    for npc in npc_cars:
+        draw_npc_car(npc)
+
 
 def start_jump():
     global jumping
@@ -611,23 +841,25 @@ def draw_car():
     glScalef(30, 25, 3)
     glutSolidCube(1)
     glPopMatrix()
+    
+    if not (first_person and player_in_car):
+        # cabin
+        glPushMatrix()
+        glColor3f(0.06, 0.08, 0.12)
+        glTranslatef(0, -6, 16)
+        glScalef(25, 27, 10)
+        glutSolidCube(1)
+        glPopMatrix()
+        
+        # windshield
+        glPushMatrix()
+        glColor3f(0.18, 0.55, 0.75)
+        glTranslatef(0, 7.8, 20)
+        glRotatef(28, 1, 0, 0)
+        glScalef(22, 0.5, 7)
+        glutSolidCube(1)
+        glPopMatrix()
 
-    # cabin
-    glPushMatrix()
-    glColor3f(0.06, 0.08, 0.12)
-    glTranslatef(0, -6, 16)
-    glScalef(25, 27, 10)
-    glutSolidCube(1)
-    glPopMatrix()
-
-    # windshield
-    glPushMatrix()
-    glColor3f(0.18, 0.55, 0.75)
-    glTranslatef(0, 8, 20)
-    glRotatef(-28, 1, 0, 0)
-    glScalef(22, 3, 10)
-    glutSolidCube(1)
-    glPopMatrix()
 
     # roof
     glPushMatrix()
@@ -641,7 +873,7 @@ def draw_car():
     glPushMatrix()
     glColor3f(0.15, 0.45, 0.65)
     glTranslatef(0, -18, 19)
-    glRotatef(28, 1, 0, 0)
+    glRotatef(-28, 1, 0, 0)
     glScalef(20, 3, 8)
     glutSolidCube(1)
     glPopMatrix()
@@ -674,6 +906,11 @@ def draw_car():
         glPopMatrix()
 
     # tail lights
+    
+    for lx in (-10, 10):
+        draw_cube(lx, -30.3, 8, 8 + 1.5, 2, 3 + 1.5, (0.03, 0.03, 0.03))
+        draw_cube(lx, -30.6, 8, 8, 2, 3, (1.0, 0.02, 0.02))
+    
     for lx in (-10, 10):
         glPushMatrix()
         glColor3f(1.0, 0.02, 0.02)
@@ -707,7 +944,72 @@ def draw_car():
     glScalef(28, 5, 2)
     glutSolidCube(1)
     glPopMatrix()
+    
+    if first_person and player_in_car:
+        glDisable(GL_DEPTH_TEST)
+        draw_steering_wheel(steering_wheel_angle)
+        glEnable(GL_DEPTH_TEST)
 
+    glPopMatrix()
+
+def draw_steering_wheel(angle_deg):
+    glPushMatrix()
+    glTranslatef(0, 14, 13)          # wheel position, lower z = lower wheel
+    glRotatef(angle_deg, 0, 1, 0)    # steering spin, about the forward axis
+
+    glColor3f(0.05, 0.05, 0.05)
+    radius = 6
+    tube = 0.9
+    segments = 20
+    q = gluNewQuadric()
+
+    # points around the rim, in the wheel's local xz plane
+    points = []
+    for i in range(segments + 1):
+        a = 2 * math.pi * i / segments
+        points.append((math.sin(a) * radius, 0, math.cos(a) * radius))
+
+    for i in range(segments):
+        x1, y1, z1 = points[i]
+        x2, y2, z2 = points[i + 1]
+        dx, dz = x2 - x1, z2 - z1
+        length = math.hypot(dx, dz)
+        seg_angle = math.degrees(math.atan2(dx, dz))
+
+        # short tube segment from point i to point i+1
+        glPushMatrix()
+        glTranslatef(x1, y1, z1)
+        glRotatef(seg_angle, 0, 1, 0)
+        gluCylinder(q, tube, tube, length, 10, 1)
+        glPopMatrix()
+
+        # sphere at the joint rounds the corner and hides the seam
+        glPushMatrix()
+        glTranslatef(x1, y1, z1)
+        gluSphere(q, tube, 10, 10)
+        glPopMatrix()
+
+    # spokes
+    for a_deg in (0, 120, 240):
+        a = math.radians(a_deg)
+        x = math.sin(a) * 3
+        z = math.cos(a) * 3
+        draw_cube(x, 0, z, 1, 1.5, 1, (0.05, 0.05, 0.05))
+
+    # hub
+    draw_cube(0, 0, 0, 3, 2, 3, (0.05, 0.05, 0.05))
+    
+    # hands gripping the rim, simple cylinders that spin with the wheel
+    glColor3f(0.85, 0.65, 0.5)
+    for side in (-1, 1):
+        hx = side * radius * 0.85
+        hz = -radius * 0.3
+        glPushMatrix()
+        glTranslatef(hx, -1, hz)
+        glRotatef(90, 1, 0, 0)
+        gluCylinder(gluNewQuadric(), 1.8, 1.8, 5, 8, 2)
+        glPopMatrix()
+    
     glPopMatrix()
 
 def update_car():
@@ -721,20 +1023,17 @@ def update_car():
     elif b's' in pressed_keys:
         car_speed=max(car_speed-car_acceleration,-car_max_speed/2)
     else:
-        if car_speed>0:
-            car_speed=max(car_speed-car_friction,0.0)
-        elif car_speed<0:
-            car_speed=min(car_speed+car_friction,0.0)
+        if car_speed > 0:
+            car_speed = max(car_speed - car_friction, 0.0)
+        elif car_speed < 0:
+            car_speed = min(car_speed + car_friction, 0.0)
 
-    # Rotation collision
-    if abs(car_speed)>0.1:
-        new_angle=car_angle
+    if abs(car_speed) > 0.1:
+        turn_dir = 1 if car_speed > 0 else -1
         if b'a' in pressed_keys:
-            new_angle+=car_turn_speed
+            car_angle += car_turn_speed * turn_dir
         if b'd' in pressed_keys:
-            new_angle-=car_turn_speed
-        if not car_colliding(car_x,car_y,new_angle):
-            car_angle=new_angle
+            car_angle -= car_turn_speed * turn_dir
 
     rad=math.radians(car_angle)
     forward_x=-math.sin(rad)
@@ -1255,6 +1554,7 @@ def showScreen():
         draw_player(player_pos,player_angle,first_person,game_over)
 
     draw_car()
+    draw_npc_cars()   
     draw_bullets()
     
     if game_menu_open:
@@ -1272,7 +1572,7 @@ def showScreen():
 
 
 def animate():
-    global last_time, player_angle, cheat_shoot_timer
+    global last_time, player_angle, cheat_shoot_timer, steering_wheel_angle
 
     current_time = time.perf_counter()
     delta_time = min(current_time - last_time, 0.1)
@@ -1281,7 +1581,7 @@ def animate():
     update_jump(delta_time)
 
     update_car()
-
+    update_npc_cars(delta_time)
     if game_over or game_paused or game_menu_open:
         glutPostRedisplay()
         return
@@ -1314,6 +1614,14 @@ def animate():
                 player_pos[0] = new_x
             if abs(new_y) < PLAYER_LIMIT and not is_colliding(player_pos[0], new_y, PLAYER_RADIUS):
                 player_pos[1] = new_y
+                
+    # steering wheel spins toward a/d, springs back to center when released
+    if b'd' in pressed_keys:
+        steering_wheel_angle = min(steering_wheel_angle + STEER_STEP, STEER_MAX)
+    elif b'a' in pressed_keys:
+        steering_wheel_angle = max(steering_wheel_angle - STEER_STEP, -STEER_MAX)
+    else:
+        steering_wheel_angle *= 0.85
 
     if cheat_mode:
         cheat_shoot_timer += delta_time
@@ -1333,6 +1641,9 @@ def RestartGame():
     global player_life_remaining, player_in_car
     global car_x, car_y, car_z, car_speed, car_angle
     global cheat_shoot_timer
+    global npc_cars
+    
+    npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
 
     player_pos = [200, 100, 0]
     player_angle = 0
