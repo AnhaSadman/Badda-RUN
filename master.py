@@ -481,6 +481,11 @@ car_acceleration = 0.5
 car_friction = 0.3
 car_turn_speed = 3
 
+#steering
+steering_wheel_angle = 0
+STEER_MAX = 33
+STEER_STEP = 6
+
 # pressed_keys is shared by on-foot movement and car movement
 player_in_car = False
 pressed_keys = set()
@@ -573,23 +578,24 @@ def draw_car():
     glScalef(30, 25, 3)
     glutSolidCube(1)
     glPopMatrix()
-
-    # cabin
-    glPushMatrix()
-    glColor3f(0.06, 0.08, 0.12)
-    glTranslatef(0, -6, 16)
-    glScalef(25, 27, 10)
-    glutSolidCube(1)
-    glPopMatrix()
-
-    # windshield
-    glPushMatrix()
-    glColor3f(0.18, 0.55, 0.75)
-    glTranslatef(0, 8, 20)
-    glRotatef(-28, 1, 0, 0)
-    glScalef(22, 3, 10)
-    glutSolidCube(1)
-    glPopMatrix()
+    
+    if not (first_person and player_in_car):
+        # cabin
+        glPushMatrix()
+        glColor3f(0.06, 0.08, 0.12)
+        glTranslatef(0, -6, 16)
+        glScalef(25, 27, 10)
+        glutSolidCube(1)
+        glPopMatrix()
+        # windshield
+        glPushMatrix()
+        glColor3f(0.18, 0.55, 0.75)
+        glTranslatef(0, 8, 20)
+        glRotatef(-28, 1, 0, 0)
+        glScalef(22, 3, 10)
+        glutSolidCube(1)
+        glPopMatrix()
+    
 
     # roof
     glPushMatrix()
@@ -669,9 +675,73 @@ def draw_car():
     glScalef(28, 5, 2)
     glutSolidCube(1)
     glPopMatrix()
+    
+    if first_person and player_in_car:
+        glDisable(GL_DEPTH_TEST)
+        draw_steering_wheel(steering_wheel_angle)
+        glEnable(GL_DEPTH_TEST)
 
     glPopMatrix()
 
+def draw_steering_wheel(angle_deg):
+    glPushMatrix()
+    glTranslatef(0, 14, 13)          # wheel position, lower z = lower wheel
+    glRotatef(angle_deg, 0, 1, 0)    # steering spin, about the forward axis
+
+    glColor3f(0.05, 0.05, 0.05)
+    radius = 6
+    tube = 0.9
+    segments = 20
+    q = gluNewQuadric()
+
+    # points around the rim, in the wheel's local xz plane
+    points = []
+    for i in range(segments + 1):
+        a = 2 * math.pi * i / segments
+        points.append((math.sin(a) * radius, 0, math.cos(a) * radius))
+
+    for i in range(segments):
+        x1, y1, z1 = points[i]
+        x2, y2, z2 = points[i + 1]
+        dx, dz = x2 - x1, z2 - z1
+        length = math.hypot(dx, dz)
+        seg_angle = math.degrees(math.atan2(dx, dz))
+
+        # short tube segment from point i to point i+1
+        glPushMatrix()
+        glTranslatef(x1, y1, z1)
+        glRotatef(seg_angle, 0, 1, 0)
+        gluCylinder(q, tube, tube, length, 10, 1)
+        glPopMatrix()
+
+        # sphere at the joint rounds the corner and hides the seam
+        glPushMatrix()
+        glTranslatef(x1, y1, z1)
+        gluSphere(q, tube, 10, 10)
+        glPopMatrix()
+
+    # spokes
+    for a_deg in (0, 120, 240):
+        a = math.radians(a_deg)
+        x = math.sin(a) * 3
+        z = math.cos(a) * 3
+        draw_cube(x, 0, z, 1, 1.5, 1, (0.05, 0.05, 0.05))
+
+    # hub
+    draw_cube(0, 0, 0, 3, 2, 3, (0.05, 0.05, 0.05))
+    
+    # hands gripping the rim, simple cylinders that spin with the wheel
+    glColor3f(0.85, 0.65, 0.5)
+    for side in (-1, 1):
+        hx = side * radius * 0.85
+        hz = -radius * 0.3
+        glPushMatrix()
+        glTranslatef(hx, -1, hz)
+        glRotatef(90, 1, 0, 0)
+        gluCylinder(gluNewQuadric(), 1.8, 1.8, 5, 8, 2)
+        glPopMatrix()
+    
+    glPopMatrix()
 
 def update_car():
     global car_x, car_y, car_speed, car_angle
@@ -1199,7 +1269,7 @@ def showScreen():
 
 
 def animate():
-    global last_time, player_angle, cheat_shoot_timer
+    global last_time, player_angle, cheat_shoot_timer, steering_wheel_angle
 
     current_time = time.perf_counter()
     delta_time = min(current_time - last_time, 0.1)
@@ -1241,6 +1311,14 @@ def animate():
                 player_pos[0] = new_x
             if abs(new_y) < PLAYER_LIMIT and not is_colliding(player_pos[0], new_y, PLAYER_RADIUS):
                 player_pos[1] = new_y
+                
+    # steering wheel spins toward a/d, springs back to center when released
+    if b'd' in pressed_keys:
+        steering_wheel_angle = min(steering_wheel_angle + STEER_STEP, STEER_MAX)
+    elif b'a' in pressed_keys:
+        steering_wheel_angle = max(steering_wheel_angle - STEER_STEP, -STEER_MAX)
+    else:
+        steering_wheel_angle *= 0.85
 
     if cheat_mode:
         cheat_shoot_timer += delta_time
