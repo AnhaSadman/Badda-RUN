@@ -690,10 +690,11 @@ def update_car():
             car_speed = min(car_speed + car_friction, 0.0)
 
     if abs(car_speed) > 0.1:
+        turn_dir = 1 if car_speed > 0 else -1
         if b'a' in pressed_keys:
-            car_angle += car_turn_speed
+            car_angle += car_turn_speed * turn_dir
         if b'd' in pressed_keys:
-            car_angle -= car_turn_speed
+            car_angle -= car_turn_speed * turn_dir
 
     angle_rad = math.radians(car_angle)
     forward_x = -math.sin(angle_rad)
