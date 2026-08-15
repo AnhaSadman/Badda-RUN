@@ -931,6 +931,36 @@ def animate():
 
     update_bullets(delta_time)
     glutPostRedisplay()
+    
+def RestartGame():
+    global player_pos, player_angle
+    global game_over, player_bullet_missed, game_score, bullets, enemies
+    global first_person, camera_height, camera_angle
+    global cheat_mode, game_paused, gun_follow, locked_camera_angle
+    global player_life_remaining, player_in_car
+    global car_x, car_y, car_z, car_speed, car_angle
+    global cheat_shoot_timer
+
+    player_pos = [200, 100, 0]
+    player_angle = 0
+    player_life_remaining = 5
+    game_over = False
+    player_bullet_missed = 0
+    game_score = 0
+    bullets.clear()
+    enemies.clear()
+    pressed_keys.clear()
+    first_person = False
+    camera_angle = 0
+    camera_height = 85
+    cheat_mode = False
+    gun_follow = True
+    locked_camera_angle = 0
+    cheat_shoot_timer = 0
+    player_in_car = False
+    car_x, car_y, car_z = 160, 150, 0
+    car_angle = 0
+    car_speed = 0
 
 
 def keyboardListener(key, x, y):
@@ -946,26 +976,7 @@ def keyboardListener(key, x, y):
 
     # restart, always available
     if nk in (b'r',):
-        player_pos = [200, 100, 0]
-        player_angle = 0
-        player_life_remaining = 5
-        game_over = False
-        player_bullet_missed = 0
-        game_score = 0
-        bullets.clear()
-        enemies.clear()
-        pressed_keys.clear()
-        first_person = False
-        camera_angle = 0
-        camera_height = 85
-        cheat_mode = False
-        gun_follow = True
-        locked_camera_angle = 0
-        cheat_shoot_timer = 0
-        player_in_car = False
-        car_x, car_y, car_z = 160, 150, 0
-        car_angle = 0
-        car_speed = 0
+        RestartGame()
         return
 
     # pause
