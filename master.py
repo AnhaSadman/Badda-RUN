@@ -485,6 +485,46 @@ car_turn_speed = 3
 player_in_car = False
 pressed_keys = set()
 
+# ===================== JUMP + RUN =====================
+
+jumping = False
+jump_velocity = 0.0
+
+JUMP_HEIGHT = 40.0
+JUMP_GRAVITY = 400.0
+JUMP_VELOCITY = (2.0 * JUMP_GRAVITY * JUMP_HEIGHT) ** 0.5
+
+RUN_SPEED = player_speed * 2
+
+def start_jump():
+    global jumping
+    global jump_velocity
+
+    if player_in_car:
+        return
+
+    if game_over or game_paused:
+        return
+
+    if not jumping and player_pos[2] <= 0:
+        jumping = True
+        jump_velocity = JUMP_VELOCITY
+        
+def update_jump(delta_time):
+    global jumping
+    global jump_velocity
+
+    if not jumping:
+        return
+
+    jump_velocity -= JUMP_GRAVITY * delta_time
+    player_pos[2] += jump_velocity * delta_time
+
+    if player_pos[2] <= 0:
+        player_pos[2] = 0
+        jump_velocity = 0
+        jumping = False
+
 
 def initialize():
     global screen_width, screen_height
@@ -965,6 +1005,8 @@ def animate():
     current_time = time.perf_counter()
     delta_time = min(current_time - last_time, 0.1)
     last_time = current_time
+    
+    update_jump(delta_time)
 
     update_car()
 
@@ -1044,6 +1086,8 @@ def RestartGame():
 
 def keyboardListener(key, x, y):
     global player_pos, player_angle
+    global player_speed
+    global jumping, jump_velocity
     global game_over, player_bullet_missed, game_score, bullets, enemies
     global first_person, camera_height, camera_angle
     global cheat_mode, game_paused, gun_follow, locked_camera_angle
@@ -1065,15 +1109,35 @@ def keyboardListener(key, x, y):
 
     # restart, always available
     if nk in (b'r',):
+        player_pos = [200, 100, 0]
+        jumping = False
+        jump_velocity = 0.0
+        player_angle = 0
+        player_life_remaining = 5
+        game_over = False
+        player_bullet_missed = 0
+        game_score = 0
+        bullets.clear()
+        enemies.clear()
+        pressed_keys.clear()
+        first_person = False
+        camera_angle = 0
+        camera_height = 85
+        cheat_mode = False
+        gun_follow = True
+        locked_camera_angle = 0
+        cheat_shoot_timer = 0
+        player_in_car = False
+        car_x, car_y, car_z = 160, 150, 0
+        car_angle = 0
+        car_speed = 0
         RestartGame()
         return
-
-    # pause
+    
     if nk == b' ':
-        if not game_over:
-            game_paused = not game_paused
+        start_jump()
         return
-
+    
     # cheat toggle
     if nk == b'c':
         cheat_mode = not cheat_mode
@@ -1111,6 +1175,16 @@ def keyboardListener(key, x, y):
 
     if game_over or game_paused:
         return
+    
+        # J = jump
+    if nk == b' ':
+        start_jump()
+        return
+
+    # K = run
+    if nk == b'k':
+        player_speed = RUN_SPEED
+        return
 
     # wasd, added to pressed_keys so multiple keys combine
     if nk in (b'w', b'a', b's', b'd'):
@@ -1125,6 +1199,12 @@ def keyboardListener(key, x, y):
 
 def keyboardUpListener(key, x, y):
     nk = key.lower() if isinstance(key, bytes) else key
+    
+    if nk == b'k':
+        global player_speed
+        player_speed = 8
+        return
+    
     pressed_keys.discard(nk)
 
 
