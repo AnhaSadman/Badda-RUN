@@ -433,7 +433,7 @@ screen_height = 0
 # game stats
 player_life_remaining = 5
 game_score = 0
-player_money = 0
+player_money = 25
 
 # player
 player_pos = [200, 100, 0]
@@ -1705,7 +1705,6 @@ def update_car():
         player_pos[1] = car_y
 
 def try_refuel():
-    """Called when player presses F near the gas station while in the car."""
     global car_fuel, player_money, fuel_hint
 
     if not player_in_car:
@@ -1717,22 +1716,18 @@ def try_refuel():
         fuel_hint = "Drive closer to the pump"
         return
 
-    needed   = CAR_FUEL_MAX - car_fuel
-    if needed < 0.5:
+    if car_fuel >= CAR_FUEL_MAX:
         fuel_hint = "Tank is already full!"
         return
 
-    cost = int(needed * FUEL_COST_PER_L)
-    if player_money < cost:
-        # fill only what the player can afford
-        affordable = player_money / FUEL_COST_PER_L
-        car_fuel   = min(CAR_FUEL_MAX, car_fuel + affordable)
-        player_money = 0
-        fuel_hint  = f"Partial refuel — ran out of money!"
-    else:
-        player_money -= cost
-        car_fuel      = CAR_FUEL_MAX
-        fuel_hint     = f"Full tank!  Paid ${cost}"
+    if player_money < 10:
+        fuel_hint = "Not enough money!  Need $10"
+        return
+
+    player_money -= 10
+    car_fuel      = CAR_FUEL_MAX
+    fuel_hint     = "Full tank!  Paid $10"
+    
 
 def update_fuel_hint():
     global fuel_hint
@@ -1744,7 +1739,7 @@ def update_fuel_hint():
         if car_fuel < CAR_FUEL_MAX:
             needed = CAR_FUEL_MAX - car_fuel
             cost   = int(needed * FUEL_COST_PER_L)
-            fuel_hint = f"Press F to refuel  ({needed:.0f}L = ${cost})"
+            fuel_hint = "Press F to refuel  ($10 full tank)"
         else:
             fuel_hint = "Tank is full"
     else:
@@ -2415,7 +2410,7 @@ def RestartGame():
     missions_completed  = 0
     drug_picked_up      = False
     mission_hint        = ""
-    player_money = 0
+    player_money = 25
     suspicion_level = 0
     heat_level      = 0
     police_active   = False
