@@ -433,7 +433,6 @@ screen_height = 0
 # game stats
 player_life_remaining = 5
 game_score = 0
-player_bullet_missed = 0
 
 # player
 player_pos = [200, 100, 0]
@@ -459,7 +458,7 @@ enemy_spawn_distance = 250
 game_over = False
 game_paused = False
 last_time = time.perf_counter()
-game_menu_open = False
+game_menu_open = True
 menu_buttons = {}
 
 # cheat mode
@@ -469,6 +468,25 @@ cheat_shoot_interval = 0.15
 cheat_shoot_timer = 0
 gun_follow = True
 locked_camera_angle = 0
+
+
+#Mission Syste
+MISSION_DEFS = [
+    {"pickup": (-600, 200),  "dropoff": (500, -500)},
+    {"pickup": (100,  -700), "dropoff": (-500, 400)},
+    {"pickup": (650,  600),  "dropoff": (-200, -600)},
+]
+
+MISSION_TRIGGER_RADIUS  = 80   
+PICKUP_RADIUS           = 70   
+DROPOFF_RADIUS          = 70   
+
+
+mission_state       = "idle"
+current_mission_idx = 0        
+missions_completed  = 0
+drug_picked_up      = False
+mission_hint        = ""       
 
 # car
 car_x = 160
@@ -507,6 +525,153 @@ NPC_CAR_COUNT   = 20     # how many NPC cars to spawn
 NPC_CAR_SPEED   = 6.0    # cruising speed
 NPC_TURN_RATE   = 2.5    # degrees per frame when steering
 NPC_STUCK_TIME  = 1.8    # seconds before declaring stuck and forcing a turn
+
+
+#MISSION LOGIC
+
+def _player_world_pos():
+    """Return the 2-D world position of the player (or car if driving)."""
+    if player_in_car:
+        return car_x, car_y
+    return player_pos[0], player_pos[1]
+
+
+def _near(ax, ay, bx, by, radius):
+    return math.hypot(ax - bx, ay - by) < radius
+
+
+def update_mission():
+    global mission_state, current_mission_idx, missions_completed
+    global drug_picked_up, mission_hint
+
+    sx, sy, _, _ = interactive_zones["safe_house"]
+    px, py = _player_world_pos()
+
+    if mission_state == "idle":
+        if _near(px, py, sx, sy, MISSION_TRIGGER_RADIUS):
+            mission_hint = "Press M at the safe house to start a mission"
+        else:
+            mission_hint = ""
+        return
+
+    if mission_state == "at_safehouse":
+        mission_hint = "Press M to start Mission {}/3".format(current_mission_idx + 1)
+        return
+
+    if missions_completed >= 3:
+        mission_state = "done"
+        mission_hint  = "All 3 missions complete!  Good work."
+        return
+
+    m = MISSION_DEFS[current_mission_idx]
+    pick_x, pick_y = m["pickup"]
+    drop_x, drop_y = m["dropoff"]
+
+    if mission_state == "going_pickup":
+        dist = math.hypot(px - pick_x, py - pick_y)
+        mission_hint = (
+            "Mission {}/3  |  Go pick up the package  "
+            "({:.0f} units away)".format(current_mission_idx + 1, dist)
+        )
+        if _near(px, py, pick_x, pick_y, PICKUP_RADIUS):
+            drug_picked_up  = True
+            mission_state   = "carrying"
+
+    elif mission_state == "carrying":
+        dist = math.hypot(px - drop_x, py - drop_y)
+        mission_hint = (
+            "Mission {}/3  |  Deliver the package  "
+            "({:.0f} units away)".format(current_mission_idx + 1, dist)
+        )
+        if _near(px, py, drop_x, drop_y, DROPOFF_RADIUS):
+            drug_picked_up    = False
+            missions_completed += 1
+            if missions_completed >= 3:
+                mission_state = "done"
+                mission_hint  = "All 3 missions complete!  Good work."
+            else:
+                current_mission_idx += 1
+                mission_state = "idle"
+                mission_hint  = "Delivery done!  Return to safe house for next mission."
+
+    elif mission_state == "done":
+        mission_hint = "All 3 missions complete!  Good work."
+
+
+def try_start_mission():
+    """Called when player presses M."""
+    global mission_state, current_mission_idx, missions_completed
+
+    if missions_completed >= 3:
+        return
+
+    sx, sy, _, _ = interactive_zones["safe_house"]
+    px, py = _player_world_pos()
+
+    if not _near(px, py, sx, sy, MISSION_TRIGGER_RADIUS):
+        return   # not close enough to safe house
+
+    if mission_state in ("idle", "at_safehouse"):
+        mission_state = "going_pickup"
+        
+
+def draw_mission_markers():
+    """Draw a floating sphere at pickup and dropoff locations when active."""
+    if mission_state not in ("going_pickup", "carrying"):
+        return
+
+    m = MISSION_DEFS[current_mission_idx]
+
+    # pickup — yellow sphere (only visible before picked up)
+    if mission_state == "going_pickup":
+        px, py = m["pickup"]
+        glPushMatrix()
+        glColor3f(1.0, 0.85, 0.0)
+        glTranslatef(px, py, 60)
+        glutSolidSphere(14, 12, 8)
+        glPopMatrix()
+        # vertical pole so it's visible from a distance
+        glPushMatrix()
+        glColor3f(1.0, 0.85, 0.0)
+        glTranslatef(px, py, 2)
+        gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
+        glPopMatrix()
+
+    # dropoff — green sphere
+    dx, dy = m["dropoff"]
+    glPushMatrix()
+    glColor3f(0.1, 1.0, 0.3)
+    glTranslatef(dx, dy, 60)
+    glutSolidSphere(14, 12, 8)
+    glPopMatrix()
+    glPushMatrix()
+    glColor3f(0.1, 1.0, 0.3)
+    glTranslatef(dx, dy, 2)
+    gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
+    glPopMatrix()
+
+def show_mission_hud():
+    if mission_hint:
+        # top center
+        tx = screen_width // 2 - len(mission_hint) * 5
+        draw_text(tx, screen_height - 36, mission_hint)
+
+    # right side panel — mission progress
+    rx = screen_width - 220
+    draw_text(rx, screen_height - 30,  "=== MISSIONS ===")
+    for i in range(3):
+        if i < missions_completed:
+            label = "Mission {}:  DONE".format(i + 1)
+        elif i == current_mission_idx and mission_state not in ("idle", "done"):
+            label = "Mission {}:  IN PROGRESS".format(i + 1)
+        else:
+            label = "Mission {}:  Pending".format(i + 1)
+        draw_text(rx, screen_height - 55 - i * 25, label)
+
+    if drug_picked_up:
+        draw_text(screen_width // 2 - 60, screen_height - 65, "[CARRYING PACKAGE]")
+        
+    
 
 def _random_npc_color():
     # pick hue from safe zones — anything except reds (0-30° and 330-360°)
@@ -1059,7 +1224,7 @@ def draw_bullets():
 
 
 def update_bullets(delta_time):
-    global bullets, enemies, player_bullet_missed, game_over, game_score
+    global bullets, enemies, game_over, game_score
 
     remaining = []
     for bullet in bullets:
@@ -1085,16 +1250,11 @@ def update_bullets(delta_time):
         if is_colliding(bullet["x"], bullet["y"], bullet_size):
             continue
 
-        if abs(bullet["x"]) > MAP_SIZE or abs(bullet["y"]) > MAP_SIZE:
-            if not bullet.get("cheat", False):
-                player_bullet_missed += 1
-                if player_bullet_missed >= 10:
-                    game_over = True
-            continue
+        
 
         remaining.append(bullet)
 
-    bullets = remaining
+    
 
 
 def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
@@ -1120,9 +1280,8 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
 def show_status():
     draw_text(10, screen_height - 30, f"Lives: {player_life_remaining}")
     draw_text(10, screen_height - 60, f"Score: {game_score}")
-    draw_text(10, screen_height - 90, f"Missed: {player_bullet_missed}")
     if player_in_car:
-        draw_text(10, screen_height - 120, f"IN CAR  speed={car_speed:.1f}")
+        draw_text(10, screen_height - 90, f"IN CAR  speed={car_speed:.1f}")
     if game_over:
         cx = screen_width // 2 - 80
         cy = screen_height // 2
@@ -1131,6 +1290,8 @@ def show_status():
         cx = screen_width // 2 - 40
         cy = screen_height // 2
         draw_text(cx, cy, "PAUSED")
+        
+    show_mission_hud()
 
 def draw_pause_menu():
     # semi-transparent full screen overlay with Restart / Resume / Exit buttons
@@ -1162,7 +1323,7 @@ def draw_pause_menu():
     btn_w, btn_h, gap = 220, 50, 20
     cx = screen_width / 2
     cy = screen_height / 2
-    labels = ["Restart", "Resume", "Exit"]
+    labels = ["Start New Game", "Resume", "Exit"]
     menu_buttons.clear()
 
     for i, label in enumerate(labels):
@@ -1199,7 +1360,7 @@ def draw_pause_menu():
 def handle_menu_click(label):
     # runs when a menu button is clicked
     global game_menu_open
-    if label == "Restart":
+    if label == "Start New Game":
         RestartGame()
         game_menu_open = False
     elif label == "Resume":
@@ -1280,7 +1441,6 @@ def draw_minimap():
     if screen_width==0 or screen_height==0:
         return
 
-    # Follow player or car
     if player_in_car:
         px,py=car_x,car_y
     else:
@@ -1291,7 +1451,6 @@ def draw_minimap():
     bottom_offset=60
     minimap_range=500
 
-    # Bottom-left minimap
     glViewport(margin,margin+bottom_offset,map_size,map_size)
 
     glMatrixMode(GL_PROJECTION)
@@ -1315,119 +1474,138 @@ def draw_minimap():
     glEnd()
     glEnable(GL_DEPTH_TEST)
 
-    # Ground and roads
     draw_ground()
 
-    # Minimap road lines
+    # Road lines
     glDisable(GL_DEPTH_TEST)
     glColor3f(1,0.9,0.1)
-
     for road in range(-MAP_SIZE,MAP_SIZE+1,BLOCK_SPACING):
         for p in range(-MAP_SIZE,MAP_SIZE,80):
             glBegin(GL_QUADS)
-
-            glVertex3f(road-3,p,15)
-            glVertex3f(road+3,p,15)
-            glVertex3f(road+3,p+38,15)
-            glVertex3f(road-3,p+38,15)
-
-            glVertex3f(p,road-3,15)
-            glVertex3f(p+38,road-3,15)
-            glVertex3f(p+38,road+3,15)
-            glVertex3f(p,road+3,15)
-
+            glVertex3f(road-3,p,15);   glVertex3f(road+3,p,15)
+            glVertex3f(road+3,p+38,15);glVertex3f(road-3,p+38,15)
+            glVertex3f(p,road-3,15);   glVertex3f(p+38,road-3,15)
+            glVertex3f(p+38,road+3,15);glVertex3f(p,road+3,15)
             glEnd()
-
     glEnable(GL_DEPTH_TEST)
 
     # Buildings
     for bx,by,bw,bh,r,g,b,h in buildings:
         glColor3f(r,g,b)
         glBegin(GL_QUADS)
-        glVertex3f(bx-bw/2,by-bh/2,5)
-        glVertex3f(bx+bw/2,by-bh/2,5)
-        glVertex3f(bx+bw/2,by+bh/2,5)
-        glVertex3f(bx-bw/2,by+bh/2,5)
+        glVertex3f(bx-bw/2,by-bh/2,5);glVertex3f(bx+bw/2,by-bh/2,5)
+        glVertex3f(bx+bw/2,by+bh/2,5);glVertex3f(bx-bw/2,by+bh/2,5)
         glEnd()
 
-    # Gas station marker
-    
-    gx,gy,gw,gh=interactive_zones["gas_station"]
+    # --- all blips drawn in world space, depth test off so they always show ---
+    glDisable(GL_DEPTH_TEST)
 
-    glColor3f(1,0.15,0.15)
-    glBegin(GL_QUADS)
-    glVertex3f(gx-35,gy-22,12)
-    glVertex3f(gx+35,gy-22,12)
-    glVertex3f(gx+35,gy+22,12)
-    glVertex3f(gx-35,gy+22,12)
-    glEnd()
+    # collect every blip we want to draw: (wx, wy, r, g, b, size)
+    blips = []
 
-    # Safe house marker
-    sx,sy,sw,sh=interactive_zones["safe_house"]
+    gx,gy,gw,gh = interactive_zones["gas_station"]
+    blips.append((gx, gy, 1.0, 0.15, 0.15, 22))   # red — gas station
 
-    glColor3f(0.1,1,0.25)
-    glBegin(GL_QUADS)
-    glVertex3f(sx-35,sy-22,12)
-    glVertex3f(sx+35,sy-22,12)
-    glVertex3f(sx+35,sy+22,12)
-    glVertex3f(sx-35,sy+22,12)
-    glEnd()
-        
-    
-    # Car/player marker
+    sx,sy,sw,sh = interactive_zones["safe_house"]
+    blips.append((sx, sy, 0.1, 1.0, 0.25, 22))     # green — safe house
+
+    if mission_state == "going_pickup":
+        pick_x,pick_y = MISSION_DEFS[current_mission_idx]["pickup"]
+        blips.append((pick_x, pick_y, 1.0, 0.85, 0.0, 18))   # yellow — pickup
+
+    if mission_state == "carrying":
+        drop_x,drop_y = MISSION_DEFS[current_mission_idx]["dropoff"]
+        blips.append((drop_x, drop_y, 0.1, 1.0, 0.3, 18))    # green — dropoff
+
+    for (wx, wy, r, g, b, size) in blips:
+        rel_x = wx - px
+        rel_y = wy - py
+
+        # check if inside minimap view range
+        if abs(rel_x) <= minimap_range and abs(rel_y) <= minimap_range:
+            # draw square blip at world position
+            glColor3f(r, g, b)
+            glBegin(GL_QUADS)
+            glVertex3f(wx-size, wy-size, 20)
+            glVertex3f(wx+size, wy-size, 20)
+            glVertex3f(wx+size, wy+size, 20)
+            glVertex3f(wx-size, wy+size, 20)
+            glEnd()
+        else:
+            # clamp to edge and draw a triangle arrow pointing inward
+            edge = minimap_range * 0.88
+            clamped_x = px + max(-edge, min(rel_x, edge))
+            clamped_y = py + max(-edge, min(rel_y, edge))
+
+            # direction from clamped edge pos toward the actual target
+            dx = wx - clamped_x
+            dy = wy - clamped_y
+            length = math.hypot(dx, dy)
+            if length == 0:
+                continue
+            ndx = dx / length
+            ndy = dy / length
+
+            # perpendicular for triangle base
+            px2 = -ndy
+            py2 =  ndx
+
+            tip_size  = size * 1.2
+            base_size = size * 0.8
+
+            glColor3f(r, g, b)
+            glBegin(GL_TRIANGLES)
+            glVertex3f(clamped_x + ndx * tip_size,
+                       clamped_y + ndy * tip_size, 20)
+            glVertex3f(clamped_x - ndx * base_size + px2 * base_size,
+                       clamped_y - ndy * base_size + py2 * base_size, 20)
+            glVertex3f(clamped_x - ndx * base_size - px2 * base_size,
+                       clamped_y - ndy * base_size - py2 * base_size, 20)
+            glEnd()
+
+    glEnable(GL_DEPTH_TEST)
+
+    # Car/player marker — drawn last so it's always on top
     if player_in_car:
         glPushMatrix()
         glTranslatef(px,py,20)
         glRotatef(car_angle,0,0,1)
-
         glColor3f(1,0,0)
         glBegin(GL_QUADS)
-        glVertex3f(-10,-16,0)
-        glVertex3f(10,-16,0)
-        glVertex3f(10,16,0)
-        glVertex3f(-10,16,0)
+        glVertex3f(-10,-16,0);glVertex3f(10,-16,0)
+        glVertex3f(10,16,0);  glVertex3f(-10,16,0)
         glEnd()
-
         glColor3f(0.1,0.1,0.1)
         glBegin(GL_QUADS)
-        glVertex3f(-7,-5,1)
-        glVertex3f(7,-5,1)
-        glVertex3f(7,7,1)
-        glVertex3f(-7,7,1)
+        glVertex3f(-7,-5,1);glVertex3f(7,-5,1)
+        glVertex3f(7,7,1);  glVertex3f(-7,7,1)
         glEnd()
-
         glPopMatrix()
-
     else:
         glPushMatrix()
         glTranslatef(px,py,20)
         glRotatef(player_angle,0,0,1)
-
-        # Player marker
         glColor3f(0,0.8,1)
         glBegin(GL_TRIANGLES)
         glVertex3f(0,25,0)
         glVertex3f(-17,-16,0)
         glVertex3f(17,-16,0)
         glEnd()
-
         glPopMatrix()
 
-    # Restore minimap matrices
+    # Restore
     glPopMatrix()
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
 
-    # Full screen
     glViewport(0,0,screen_width,screen_height)
 
-    # Border projection
+    # Border
     glMatrixMode(GL_PROJECTION)
     glPushMatrix()
     glLoadIdentity()
     gluOrtho2D(0,screen_width,0,screen_height)
-
     glMatrixMode(GL_MODELVIEW)
     glPushMatrix()
     glLoadIdentity()
@@ -1438,24 +1616,18 @@ def draw_minimap():
     x2=margin+map_size
     y2=margin+bottom_offset+map_size
 
-    # Outer black border
     glColor3f(0,0,0)
     glLineWidth(8)
     glBegin(GL_LINE_LOOP)
-    glVertex2f(x1-4,y1-4)
-    glVertex2f(x2+4,y1-4)
-    glVertex2f(x2+4,y2+4)
-    glVertex2f(x1-4,y2+4)
+    glVertex2f(x1-4,y1-4);glVertex2f(x2+4,y1-4)
+    glVertex2f(x2+4,y2+4);glVertex2f(x1-4,y2+4)
     glEnd()
 
-    # Inner white border
     glColor3f(1,1,1)
     glLineWidth(3)
     glBegin(GL_LINE_LOOP)
-    glVertex2f(x1,y1)
-    glVertex2f(x2,y1)
-    glVertex2f(x2,y2)
-    glVertex2f(x1,y2)
+    glVertex2f(x1,y1);glVertex2f(x2,y1)
+    glVertex2f(x2,y2);glVertex2f(x1,y2)
     glEnd()
 
     glLineWidth(1)
@@ -1465,7 +1637,6 @@ def draw_minimap():
     glMatrixMode(GL_PROJECTION)
     glPopMatrix()
     glMatrixMode(GL_MODELVIEW)
-
 
 def showScreen():
     glClearColor(0.22,0.42,0.72,1.0)
@@ -1485,6 +1656,7 @@ def showScreen():
     draw_car()
     draw_npc_cars()   
     draw_bullets()
+    draw_mission_markers()
     
     if game_menu_open:
         draw_pause_menu()
@@ -1511,6 +1683,7 @@ def animate():
 
     update_car()
     update_npc_cars(delta_time)
+    update_mission()   
     if game_over or game_paused or game_menu_open:
         glutPostRedisplay()
         return
@@ -1564,13 +1737,14 @@ def animate():
     
 def RestartGame():
     global player_pos, player_angle
-    global game_over, player_bullet_missed, game_score, bullets, enemies
+    global game_over, game_score, bullets, enemies
     global first_person, camera_height, camera_angle
     global cheat_mode, game_paused, gun_follow, locked_camera_angle
     global player_life_remaining, player_in_car
     global car_x, car_y, car_z, car_speed, car_angle
     global cheat_shoot_timer
     global npc_cars
+    global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint
     
     npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
 
@@ -1578,7 +1752,6 @@ def RestartGame():
     player_angle = 0
     player_life_remaining = 5
     game_over = False
-    player_bullet_missed = 0
     game_score = 0
     bullets.clear()
     enemies.clear()
@@ -1594,13 +1767,21 @@ def RestartGame():
     car_x, car_y, car_z = 160, 150, 0
     car_angle = 0
     car_speed = 0
+    
+    #Mission Related
+    mission_state       = "idle"
+    current_mission_idx = 0
+    missions_completed  = 0
+    drug_picked_up      = False
+    mission_hint        = ""
+    
 
 
 def keyboardListener(key, x, y):
     global player_pos, player_angle
     global player_speed
     global jumping, jump_velocity
-    global game_over, player_bullet_missed, game_score, bullets, enemies
+    global game_over, game_score, bullets, enemies
     global first_person, camera_height, camera_angle
     global cheat_mode, game_paused, gun_follow, locked_camera_angle
     global player_life_remaining, player_in_car
@@ -1627,7 +1808,6 @@ def keyboardListener(key, x, y):
         player_angle = 0
         player_life_remaining = 5
         game_over = False
-        player_bullet_missed = 0
         game_score = 0
         bullets.clear()
         enemies.clear()
@@ -1704,8 +1884,8 @@ def keyboardListener(key, x, y):
         return
 
     # shoot
-    if nk == b'f':
-        shoot()
+    if nk == b'm' or nk==b'M':
+        try_start_mission()
         return
 
 
