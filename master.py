@@ -463,19 +463,18 @@ game_menu_open = True
 menu_buttons = {}
 
 # cheat mode
-cheat_mode = False
-cheat_rotation_speed = 120
-cheat_shoot_interval = 0.15
-cheat_shoot_timer = 0
-gun_follow = True
-locked_camera_angle = 0
+cheat_mode         = False
+cheat_waypoints    = []      # list of (x, y) road intersections to follow
+cheat_target       = None    # "pickup" or "dropoff"
+CHEAT_SPEED        = 8       # steady cruise speed
+CHEAT_ARRIVE_DIST  = 30      # how close to a waypoint before moving to next
 
 
 #Mission Syste
 MISSION_DEFS = [
-    {"pickup": (-600, 200),  "dropoff": (500, -500)},
-    {"pickup": (100,  -700), "dropoff": (-500, 400)},
-    {"pickup": (650,  600),  "dropoff": (-200, -600)},
+    {"pickup": (200, 785), "dropoff": ( -687, -689)},
+    {"pickup": (   494, 966), "dropoff": (-690,  -113)},
+    {"pickup": ( -322,  -412), "dropoff": (-236,    499)},
 ]
 
 MISSION_TRIGGER_RADIUS  = 80   
@@ -947,6 +946,141 @@ def update_mission():
 
     elif mission_state == "done":
         mission_hint = "All 3 missions complete!  Good work."
+
+def _road_nodes():
+    """All road intersection coordinates on the grid."""
+    coords = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+    nodes = []
+    for x in coords:
+        for y in coords:
+            nodes.append((x, y))
+    return nodes
+
+
+def _nearest_node(x, y):
+    """Snap any world position to the closest road intersection."""
+    nodes = _road_nodes()
+    return min(nodes, key=lambda n: math.hypot(n[0] - x, n[1] - y))
+
+
+def _bfs_path(start_node, end_node):
+    """BFS on the road grid — returns list of (x,y) waypoints start→end."""
+    if start_node == end_node:
+        return [start_node]
+
+    coords  = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+    coord_set = set(coords)
+
+    def neighbours(nx, ny):
+        # four cardinal road directions
+        result = []
+        if nx + BLOCK_SPACING in coord_set or nx - BLOCK_SPACING in coord_set:
+            pass  # x is on a road line — can go north/south along it
+        for dx, dy in [(BLOCK_SPACING, 0), (-BLOCK_SPACING, 0),
+                       (0, BLOCK_SPACING), (0, -BLOCK_SPACING)]:
+            nb = (nx + dx, ny + dy)
+            if nb[0] in coord_set and nb[1] in coord_set:
+                result.append(nb)
+        return result
+
+    visited = {start_node}
+    queue   = [(start_node, [start_node])]
+
+    while queue:
+        (cx, cy), path = queue.pop(0)
+        for nb in neighbours(cx, cy):
+            if nb == end_node:
+                return path + [nb]
+            if nb not in visited:
+                visited.add(nb)
+                queue.append((nb, path + [nb]))
+
+    return [start_node, end_node]   # fallback — straight line
+
+
+def _plan_cheat_route(target_x, target_y):
+    """Build waypoint list from car's current position to (target_x, target_y)."""
+    start = _nearest_node(car_x, car_y)
+    end   = _nearest_node(target_x, target_y)
+    path  = _bfs_path(start, end)
+    # add the exact target at the end so we arrive precisely
+    path.append((target_x, target_y))
+    return path
+
+def update_cheat_drive():
+    global cheat_mode, cheat_waypoints, cheat_target
+    global car_x, car_y, car_angle, car_speed
+
+    if not cheat_mode:
+        return
+
+    # cancel if conditions lost
+    if not player_in_car or mission_state not in ("going_pickup", "carrying"):
+        cheat_mode      = False
+        cheat_waypoints = []
+        car_speed       = 0
+        return
+
+    # keep target in sync with mission state
+    new_target = "pickup" if mission_state == "going_pickup" else "dropoff"
+    if new_target != cheat_target:
+        cheat_target    = new_target
+        m               = MISSION_DEFS[current_mission_idx]
+        tx, ty          = m["pickup"] if cheat_target == "pickup" else m["dropoff"]
+        cheat_waypoints = _plan_cheat_route(tx, ty)
+
+    if not cheat_waypoints:
+        m               = MISSION_DEFS[current_mission_idx]
+        tx, ty          = m["pickup"] if cheat_target == "pickup" else m["dropoff"]
+        cheat_waypoints = _plan_cheat_route(tx, ty)
+        if not cheat_waypoints:
+            cheat_mode = False
+            return
+
+    wx, wy = cheat_waypoints[0]
+
+    dx   = wx - car_x
+    dy   = wy - car_y
+    dist = math.hypot(dx, dy)
+
+    if dist < CHEAT_ARRIVE_DIST:
+        # snap car exactly onto the waypoint before moving to next
+        car_x = float(wx)
+        car_y = float(wy)
+        cheat_waypoints.pop(0)
+        if not cheat_waypoints:
+            car_speed  = 0
+            cheat_mode = False
+        return
+
+    # ── determine axis of travel ──────────────────────────────────────────────
+    # look at where we came from vs where we're going to decide H or V travel
+    if abs(dx) > abs(dy):
+        # travelling horizontally — lock Y to current road line
+        ROAD_COORDS = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+        car_y = float(min(ROAD_COORDS, key=lambda r: abs(r - car_y)))
+        move_x = CHEAT_SPEED if dx > 0 else -CHEAT_SPEED
+        move_y = 0.0
+        car_angle = 90.0 if dx > 0 else 270.0
+    else:
+        # travelling vertically — lock X to current road line
+        ROAD_COORDS = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+        car_x = float(min(ROAD_COORDS, key=lambda r: abs(r - car_x)))
+        move_x = 0.0
+        move_y = CHEAT_SPEED if dy > 0 else -CHEAT_SPEED
+        car_angle = 0.0 if dy > 0 else 180.0
+
+    # clamp inside map before applying movement
+    new_cx = max(-MAP_SIZE + 50, min(car_x + move_x, MAP_SIZE - 50))
+    new_cy = max(-MAP_SIZE + 50, min(car_y + move_y, MAP_SIZE - 50))
+
+    car_x     = new_cx
+    car_y     = new_cy
+    car_speed = CHEAT_SPEED
+
+    # keep player glued to car
+    player_pos[0] = car_x
+    player_pos[1] = car_y
 
 
 def try_start_mission():
@@ -1495,6 +1629,9 @@ def update_car():
 
     if not player_in_car:
         return
+    
+    if cheat_mode:
+        return 
 
     if b'w' in pressed_keys:
         car_speed = min(car_speed + car_acceleration, car_max_speed)
@@ -1629,9 +1766,13 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
 
 
 def show_status():
+    px, py = _player_world_pos()
+    draw_text(10, screen_height - 240, f"POS  x={px:.0f}  y={py:.0f}")
     draw_text(10, screen_height - 30, f"Suspicion: {'|' * suspicion_level + '.' * (3 - suspicion_level)}  ({suspicion_level}/3)")
     draw_text(10, screen_height - 60, f"Heat: {'WANTED' if heat_level else 'clean'}")
     draw_text(10, screen_height - 90, f"Money: ${player_money}")
+    if cheat_mode:
+        draw_text(screen_width // 2 - 55, screen_height - 90, "[CHEAT DRIVING]")
     
     
     if player_in_car:
@@ -2086,11 +2227,7 @@ def animate():
         steering_wheel_angle *= 0.85
 
     if cheat_mode:
-        cheat_shoot_timer += delta_time
-        if cheat_shoot_timer >= cheat_shoot_interval:
-            cheat_shoot_timer = 0
-            player_angle = (player_angle + cheat_rotation_speed * delta_time) % 360
-            shoot(is_cheat=True)
+        update_cheat_drive()
 
     update_bullets(delta_time)
     glutPostRedisplay()
@@ -2120,10 +2257,12 @@ def RestartGame():
     first_person = False
     camera_angle = 0
     camera_height = 85
-    cheat_mode = False
-    gun_follow = True
-    locked_camera_angle = 0
-    cheat_shoot_timer = 0
+    
+    #CHEAT
+    cheat_mode      = False
+    cheat_target    = None
+    cheat_waypoints = []
+    
     player_in_car = False
     car_x, car_y, car_z = 160, 150, 0
     car_angle = 0
@@ -2198,7 +2337,16 @@ def keyboardListener(key, x, y):
     
     # cheat toggle
     if nk == b'c':
-        cheat_mode = not cheat_mode
+        if player_in_car and mission_state in ("going_pickup", "carrying"):
+            cheat_mode = not cheat_mode
+            if cheat_mode:
+                cheat_target    = "pickup" if mission_state == "going_pickup" else "dropoff"
+                m               = MISSION_DEFS[current_mission_idx]
+                tx, ty          = m["pickup"] if cheat_target == "pickup" else m["dropoff"]
+                cheat_waypoints = _plan_cheat_route(tx, ty)
+            else:
+                cheat_waypoints = []
+                car_speed       = 0
         return
 
     # gun-follow toggle, cheat + first person only
