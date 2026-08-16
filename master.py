@@ -655,6 +655,8 @@ FINAL_SAFEHOUSE_RADIUS = 130
 final_mission_state   = "locked"
 bomb_picked_up        = False
 bomb_planted          = False
+bomb_cooldown_timer   = 0.0
+POLICE_RESPONSE_DELAY = 2.0   # seconds of quiet time after planting before cops show up
 
 final_police_cars     = []
 FINAL_POLICE_SPEED    = 5
@@ -929,10 +931,10 @@ def draw_final_police_cars():
         glPopMatrix()
 
 def update_final_mission(delta_time):
+    # game_over must be declared global here too, otherwise these assignments
+    # only create a local variable and the real game never ends
     global final_mission_state, bomb_picked_up, bomb_planted
-    global player_inside_brac, building_cops, building_cops_spawned
-    global final_mission_state, bomb_picked_up, bomb_planted
-    global building_cops, building_cops_spawned
+    global building_cops, building_cops_spawned, game_over, bomb_cooldown_timer
     
 
     # only active after all 3 normal missions done
@@ -972,6 +974,13 @@ def update_final_mission(delta_time):
             mission_hint = "FINAL: Press F to plant the bomb!"
         else:
             final_mission_state = "drive_to_brac"  # walked away from the marker
+
+    # ── phase 4: cops incoming — short delay before they respond to the blast ──
+    elif final_mission_state == "cops_incoming":
+        bomb_cooldown_timer -= delta_time
+        mission_hint = f"FINAL: BOMB PLANTED! Cops incoming in {max(0, bomb_cooldown_timer):.1f}s..."
+        if bomb_cooldown_timer <= 0:
+            final_mission_state = "fight_out"
 
     # ── phase 5: fight out — cops attack, player must kill them ───────────────
     elif final_mission_state == "fight_out":
@@ -2591,7 +2600,7 @@ def draw_minimap():
         blips.append((BOMB_PICKUP_POS[0], BOMB_PICKUP_POS[1], 1.0, 0.05, 0.05, 18))
 
     # BRAC university blip — RED
-    if final_mission_state in ("drive_to_brac", "plant_bomb", "fight_out", "escape"):
+    if final_mission_state in ("drive_to_brac", "plant_bomb", "cops_incoming", "fight_out", "escape"):
         blips.append((BRAC_POS[0], BRAC_POS[1], 1.0, 0.05, 0.05, 22))
 
     # final police car blips
@@ -2831,7 +2840,7 @@ def RestartGame():
     global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint, player_money
     global suspicion_level, heat_level, police_active, k9_cooldown
     global car_fuel, fuel_hint
-    global final_mission_state, bomb_picked_up, bomb_planted
+    global final_mission_state, bomb_picked_up, bomb_planted, bomb_cooldown_timer
     global building_cops, building_cops_spawned, final_police_cars
 
     npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
@@ -2879,6 +2888,7 @@ def RestartGame():
     final_mission_state   = "locked"
     bomb_picked_up        = False
     bomb_planted          = False
+    bomb_cooldown_timer   = 0.0
     building_cops         = []
     building_cops_spawned = False
     final_police_cars     = []
@@ -3029,10 +3039,11 @@ def keyboardListener(key, x, y):
         if final_mission_state == "plant_bomb":
             px2, py2 = _player_world_pos()
             if math.hypot(px2 - BRAC_GATE_POS[0], py2 - BRAC_GATE_POS[1]) < BRAC_GATE_RADIUS:
-                global bomb_planted
+                global bomb_planted, bomb_cooldown_timer
                 bomb_planted        = True
-                final_mission_state = "fight_out"
-                mission_hint        = "FINAL: BOMB PLANTED! Kill the cops and escape!"
+                final_mission_state = "cops_incoming"
+                bomb_cooldown_timer = POLICE_RESPONSE_DELAY
+                mission_hint        = f"FINAL: BOMB PLANTED! Cops incoming in {POLICE_RESPONSE_DELAY:.0f}s..."
                 return
         # refuel (original behaviour)
         try_refuel()
