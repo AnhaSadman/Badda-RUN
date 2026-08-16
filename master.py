@@ -499,6 +499,16 @@ car_acceleration = 0.5
 car_friction = 0.3
 car_turn_speed = 3
 
+# fuel
+car_fuel          = 100.0   # current fuel 0-100
+CAR_FUEL_MAX      = 100.0
+CAR_FUEL_DRAIN    = 0.04    # units lost per frame while moving
+CAR_FUEL_IDLE     = 0.005   # tiny drain even while idling in car
+FUEL_COST_PER_L   = 2       # $ per unit of fuel
+GAS_STATION_RADIUS = 110    # how close car must be to refuel
+fuel_hint         = ""      # shown near gas station
+
+
 #steering
 steering_wheel_angle = 0
 STEER_MAX = 33
@@ -1625,7 +1635,7 @@ def draw_steering_wheel(angle_deg):
     glPopMatrix()
 
 def update_car():
-    global car_x, car_y, car_speed, car_angle
+    global car_x, car_y, car_speed, car_angle,car_fuel
 
     if not player_in_car:
         return
@@ -1678,12 +1688,68 @@ def update_car():
         car_speed = 0
     else:
         car_y = test_cy
+        
+    # fuel drain
+    if abs(car_speed) > 0.5:
+        car_fuel = max(0.0, car_fuel - CAR_FUEL_DRAIN)
+    else:
+        car_fuel = max(0.0, car_fuel - CAR_FUEL_IDLE)
+
+    # out of fuel — car coasts to a stop
+    if car_fuel <= 0:
+        car_speed = max(car_speed - car_friction * 2, 0.0)
 
     # keep player glued to car
     if player_in_car:
         player_pos[0] = car_x
         player_pos[1] = car_y
 
+def try_refuel():
+    """Called when player presses F near the gas station while in the car."""
+    global car_fuel, player_money, fuel_hint
+
+    if not player_in_car:
+        fuel_hint = "Get in the car to refuel"
+        return
+
+    gx, gy, _, _ = interactive_zones["gas_station"]
+    if math.hypot(car_x - gx, car_y - gy) > GAS_STATION_RADIUS:
+        fuel_hint = "Drive closer to the pump"
+        return
+
+    needed   = CAR_FUEL_MAX - car_fuel
+    if needed < 0.5:
+        fuel_hint = "Tank is already full!"
+        return
+
+    cost = int(needed * FUEL_COST_PER_L)
+    if player_money < cost:
+        # fill only what the player can afford
+        affordable = player_money / FUEL_COST_PER_L
+        car_fuel   = min(CAR_FUEL_MAX, car_fuel + affordable)
+        player_money = 0
+        fuel_hint  = f"Partial refuel — ran out of money!"
+    else:
+        player_money -= cost
+        car_fuel      = CAR_FUEL_MAX
+        fuel_hint     = f"Full tank!  Paid ${cost}"
+
+def update_fuel_hint():
+    global fuel_hint
+    if not player_in_car:
+        fuel_hint = ""
+        return
+    gx, gy, _, _ = interactive_zones["gas_station"]
+    if math.hypot(car_x - gx, car_y - gy) < GAS_STATION_RADIUS:
+        if car_fuel < CAR_FUEL_MAX:
+            needed = CAR_FUEL_MAX - car_fuel
+            cost   = int(needed * FUEL_COST_PER_L)
+            fuel_hint = f"Press F to refuel  ({needed:.0f}L = ${cost})"
+        else:
+            fuel_hint = "Tank is full"
+    else:
+        if fuel_hint.startswith("Press F") or fuel_hint == "Tank is full":
+            fuel_hint = ""
 
 def shoot(is_cheat=False):
     angle = math.radians(player_angle)
@@ -1743,7 +1809,70 @@ def update_bullets(delta_time):
         remaining.append(bullet)
 
     
+def _draw_fuel_bar():
+    """Draws a horizontal fuel bar in the bottom-right corner."""
+    bar_w  = 160
+    bar_h  = 16
+    margin = 20
+    bx     = screen_width - bar_w - margin
+    by     = margin + 60   # sits just above the minimap bottom edge
 
+    fill = (car_fuel / CAR_FUEL_MAX) * bar_w
+
+    # choose colour: green → yellow → red as fuel drops
+    if car_fuel > 50:
+        rc, gc = 0.1, 0.85
+    elif car_fuel > 25:
+        rc, gc = 0.95, 0.75
+    else:
+        rc, gc = 0.95, 0.10
+
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, screen_width, 0, screen_height)
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    glDisable(GL_DEPTH_TEST)
+
+    # dark background
+    glColor3f(0.15, 0.15, 0.15)
+    glBegin(GL_QUADS)
+    glVertex2f(bx,        by)
+    glVertex2f(bx + bar_w, by)
+    glVertex2f(bx + bar_w, by + bar_h)
+    glVertex2f(bx,        by + bar_h)
+    glEnd()
+
+    # coloured fill
+    glColor3f(rc, gc, 0.1)
+    glBegin(GL_QUADS)
+    glVertex2f(bx,          by)
+    glVertex2f(bx + fill,   by)
+    glVertex2f(bx + fill,   by + bar_h)
+    glVertex2f(bx,          by + bar_h)
+    glEnd()
+
+    # white border
+    glColor3f(1, 1, 1)
+    glLineWidth(2)
+    glBegin(GL_LINE_LOOP)
+    glVertex2f(bx,        by)
+    glVertex2f(bx + bar_w, by)
+    glVertex2f(bx + bar_w, by + bar_h)
+    glVertex2f(bx,        by + bar_h)
+    glEnd()
+    glLineWidth(1)
+
+    glEnable(GL_DEPTH_TEST)
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
+    # label drawn after matrix restore
+    draw_text(bx, by + bar_h + 4, f"FUEL  {car_fuel:.0f}%")
 
 def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     if screen_width == 0 or screen_height == 0:
@@ -1768,25 +1897,30 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
 def show_status():
     px, py = _player_world_pos()
     draw_text(10, screen_height - 240, f"POS  x={px:.0f}  y={py:.0f}")
-    draw_text(10, screen_height - 30, f"Suspicion: {'|' * suspicion_level + '.' * (3 - suspicion_level)}  ({suspicion_level}/3)")
-    draw_text(10, screen_height - 60, f"Heat: {'WANTED' if heat_level else 'clean'}")
-    draw_text(10, screen_height - 90, f"Money: ${player_money}")
-    if cheat_mode:
-        draw_text(screen_width // 2 - 55, screen_height - 90, "[CHEAT DRIVING]")
-    
-    
+    draw_text(10, screen_height - 30,  f"Suspicion: {'|' * suspicion_level + '.' * (3 - suspicion_level)}  ({suspicion_level}/3)")
+    draw_text(10, screen_height - 60,  f"Heat: {'WANTED' if heat_level else 'clean'}")
+    draw_text(10, screen_height - 90,  f"Money: ${player_money}")
+
     if player_in_car:
         draw_text(10, screen_height - 120, f"IN CAR  speed={car_speed:.1f}")
+
+        # fuel bar
+        _draw_fuel_bar()
+
+    if fuel_hint:
+        draw_text(screen_width // 2 - len(fuel_hint) * 5,
+                  screen_height - 65, fuel_hint)
+
+    if cheat_mode:
+        draw_text(screen_width // 2 - 55, screen_height - 90, "[CHEAT DRIVING]")
     if game_over:
-        cx = screen_width // 2 - 80
-        cy = screen_height // 2
-        draw_text(cx, cy, "GAME OVER - press R to restart")
+        draw_text(screen_width // 2 - 80, screen_height // 2,
+                  "GAME OVER - press R to restart")
     if game_paused:
-        cx = screen_width // 2 - 40
-        cy = screen_height // 2
-        draw_text(cx, cy, "PAUSED")
-        
+        draw_text(screen_width // 2 - 40, screen_height // 2, "PAUSED")
+
     show_mission_hud()
+
 
 def draw_pause_menu():
     # semi-transparent full screen overlay with Restart / Resume / Exit buttons
@@ -2184,7 +2318,8 @@ def animate():
     update_car()
     update_npc_cars(delta_time)
     update_heat(delta_time)
-    update_mission()   
+    update_mission() 
+    update_fuel_hint() 
     if game_over or game_paused or game_menu_open:
         glutPostRedisplay()
         return
@@ -2243,7 +2378,8 @@ def RestartGame():
     global npc_cars
     global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint, player_money
     global suspicion_level, heat_level, police_active, k9_cooldown
-    
+    global car_fuel, fuel_hint
+
     npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
 
     player_pos = [200, 100, 0]
@@ -2257,6 +2393,11 @@ def RestartGame():
     first_person = False
     camera_angle = 0
     camera_height = 85
+    
+    #car fuel
+    
+    car_fuel  = CAR_FUEL_MAX
+    fuel_hint = ""
     
     #CHEAT
     cheat_mode      = False
@@ -2331,10 +2472,6 @@ def keyboardListener(key, x, y):
         RestartGame()
         return
     
-    if nk == b' ':
-        start_jump()
-        return
-    
     # cheat toggle
     if nk == b'c':
         if player_in_car and mission_state in ("going_pickup", "carrying"):
@@ -2401,7 +2538,10 @@ def keyboardListener(key, x, y):
     if nk == b'm' or nk==b'M':
         try_start_mission()
         return
-
+    
+    if nk == b'f':
+        try_refuel()
+        return
 
 def keyboardUpListener(key, x, y):
     nk = key.lower() if isinstance(key, bytes) else key
