@@ -528,7 +528,355 @@ NPC_TURN_RATE   = 2.5    # degrees per frame when steering
 NPC_STUCK_TIME  = 1.8    # seconds before declaring stuck and forcing a turn
 
 
-#MISSION LOGIC
+#K9 and HEAT
+
+K9_RADIUS         = 120     
+SAFEHOUSE_ESCAPE  = 130     
+
+K9_POSITIONS = [
+    (-300,  150),
+    ( 300, -150),
+    (   0,  450),
+    (-600,    0),
+    ( 600,  300),
+    ( 150, -450),
+]
+
+suspicion_level  = 0       
+heat_level       = 0        
+k9_cooldown      = {}       
+
+# police car state
+police_active    = False
+police_x         = 0.0
+police_y         = 0.0
+police_angle     = 0.0
+POLICE_SPEED     = 4
+
+
+def draw_k9_dog(x, y):
+    glPushMatrix()
+    glTranslatef(x, y, 10)   # lift the whole dog up so legs sit on ground
+
+    BROWN = (0.55, 0.35, 0.15)
+    DARK  = (0.30, 0.18, 0.08)
+
+    # legs — drawn first at z=0 (ground level relative to base)
+    glColor3f(*BROWN)
+    for lx in (-5, 5):
+        for ly in (-7, 5):
+            glPushMatrix()
+            glTranslatef(lx, ly, -6)
+            glScalef(4, 4, 10)
+            glutSolidCube(1)
+            glPopMatrix()
+
+    # body — sits on top of legs
+    glColor3f(*BROWN)
+    glPushMatrix()
+    glTranslatef(0, 0, 6)
+    glScalef(14, 22, 10)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # head
+    glColor3f(*BROWN)
+    glPushMatrix()
+    glTranslatef(0, 13, 12)
+    glScalef(10, 10, 10)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # snout
+    glColor3f(*DARK)
+    glPushMatrix()
+    glTranslatef(0, 18, 10)
+    glScalef(6, 4, 5)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # ears
+    glColor3f(*DARK)
+    for ex in (-5, 5):
+        glPushMatrix()
+        glTranslatef(ex, 12, 18)
+        glScalef(4, 3, 6)
+        glutSolidCube(1)
+        glPopMatrix()
+
+    # tail
+    glColor3f(*DARK)
+    glPushMatrix()
+    glTranslatef(0, -12, 10)
+    glRotatef(40, 1, 0, 0)
+    glScalef(3, 3, 12)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    glPopMatrix()
+
+def draw_k9_zones():
+    for i, (kx, ky) in enumerate(K9_POSITIONS):
+        draw_k9_dog(kx, ky)
+
+        # only show the danger radius when player is carrying drugs
+        if not drug_picked_up:
+            continue
+
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glDisable(GL_DEPTH_TEST)
+
+        glColor4f(1.0, 0.05, 0.05, 0.18)
+        segs = 48
+        glBegin(GL_TRIANGLE_FAN)
+        glVertex3f(kx, ky, 3)
+        for s in range(segs + 1):
+            a = 2 * math.pi * s / segs
+            glVertex3f(kx + math.cos(a) * K9_RADIUS,
+                       ky + math.sin(a) * K9_RADIUS, 3)
+        glEnd()
+
+        glColor4f(1.0, 0.1, 0.1, 0.7)
+        glLineWidth(2)
+        glBegin(GL_LINE_LOOP)
+        for s in range(segs):
+            a = 2 * math.pi * s / segs
+            glVertex3f(kx + math.cos(a) * K9_RADIUS,
+                       ky + math.sin(a) * K9_RADIUS, 3)
+        glEnd()
+        glLineWidth(1)
+
+        glEnable(GL_DEPTH_TEST)
+        glDisable(GL_BLEND)
+
+def draw_police_car():
+    if not police_active:
+        return
+
+    glPushMatrix()
+    glTranslatef(police_x, police_y, 0)
+    glRotatef(police_angle, 0, 0, 1)
+
+    # white body
+    glColor3f(0.95, 0.95, 0.95)
+    draw_car_body()
+
+    # hood
+    glPushMatrix()
+    glColor3f(0.95, 0.95, 0.95)
+    glTranslatef(0, 20, 10)
+    glRotatef(-7, 1, 0, 0)
+    glScalef(30, 25, 3)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # cabin
+    glPushMatrix()
+    glColor3f(0.06, 0.08, 0.12)
+    glTranslatef(0, -6, 16)
+    glScalef(25, 27, 10)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # blue/red light bar on roof
+    glPushMatrix()
+    glColor3f(0.1, 0.1, 0.9)
+    glTranslatef(-5, -5, 25)
+    glScalef(7, 12, 4)
+    glutSolidCube(1)
+    glPopMatrix()
+    glPushMatrix()
+    glColor3f(0.9, 0.05, 0.05)
+    glTranslatef(5, -5, 25)
+    glScalef(7, 12, 4)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # side stripes — blue
+    for sx in (-20, 20):
+        glPushMatrix()
+        glColor3f(0.1, 0.2, 0.9)
+        glTranslatef(sx, -1, 7)
+        glScalef(2, 45, 4)
+        glutSolidCube(1)
+        glPopMatrix()
+
+    # wheels
+    q = gluNewQuadric()
+    for wx in (-18, 18):
+        for wy in (-20, 20):
+            glPushMatrix()
+            glColor3f(0.03, 0.03, 0.03)
+            glTranslatef(wx, wy, 6)
+            glRotatef(90, 0, 1, 0)
+            gluCylinder(q, 6, 6, 3, 16, 3)
+            glPopMatrix()
+            glPushMatrix()
+            glColor3f(0.7, 0.7, 0.72)
+            glTranslatef(wx * (18.2/18), wy, 6)
+            glRotatef(90, 0, 1, 0)
+            gluDisk(gluNewQuadric(), 0, 3.5, 12, 1)
+            glPopMatrix()
+
+    # headlights
+    for lx in (-10, 10):
+        glPushMatrix()
+        glColor3f(1.0, 0.95, 0.75)
+        glTranslatef(lx, 32, 8)
+        glScalef(8, 2, 3)
+        glutSolidCube(1)
+        glPopMatrix()
+
+    glPopMatrix()
+
+
+def update_heat(delta_time):
+    global suspicion_level, heat_level, police_active
+    global police_x, police_y, police_angle
+    global k9_cooldown, mission_state, drug_picked_up, game_over
+
+    px, py = _player_world_pos()
+
+    # tick down cooldowns
+    for idx in list(k9_cooldown):
+        k9_cooldown[idx] -= delta_time
+        if k9_cooldown[idx] <= 0:
+            del k9_cooldown[idx]
+
+    # k9 sniff — only when carrying drugs
+    if drug_picked_up:
+        for i, (kx, ky) in enumerate(K9_POSITIONS):
+            if i in k9_cooldown:
+                continue
+            if math.hypot(px - kx, py - ky) < K9_RADIUS:
+                suspicion_level += 1
+                k9_cooldown[i] = 4.0
+                if suspicion_level >= 3 and not police_active:
+                    heat_level    = 1
+                    police_active = True
+                    # spawn police on the nearest road behind the player
+                    ROAD_COORDS   = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+                    spawn_dist    = 250
+                    angle_rad     = math.radians(car_angle if player_in_car else player_angle)
+                    raw_sx        = px - (-math.sin(angle_rad)) * spawn_dist
+                    raw_sy        = py - ( math.cos(angle_rad)) * spawn_dist
+                    # snap spawn to the nearest road intersection
+                    police_x      = float(min(ROAD_COORDS, key=lambda r: abs(r - raw_sx)))
+                    police_y      = float(min(ROAD_COORDS, key=lambda r: abs(r - raw_sy)))
+                    police_angle  = float(random.choice([0, 90, 180, 270]))
+                break
+
+    if not police_active:
+        return
+
+    # ── road-following pathfinder ──────────────────────────────────────────────
+    ROAD_COORDS    = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+    SNAP_THRESHOLD = 10
+    limit          = MAP_SIZE - 50
+
+    cur_angle = police_angle % 360
+
+    angle_rad  = math.radians(police_angle)
+    forward_x  = -math.sin(angle_rad)
+    forward_y  =  math.cos(angle_rad)
+
+    new_px = police_x + forward_x * POLICE_SPEED
+    new_py = police_y + forward_y * POLICE_SPEED
+
+    blocked = (
+        abs(new_px) > limit or
+        abs(new_py) > limit or
+        is_colliding(new_px, new_py, CAR_RADIUS)
+    )
+
+    if blocked:
+        # forced turn — try each 90° and pick the one that faces the player most
+        best_angle = police_angle
+        best_dot   = -999
+        for turn in [90, -90, 180]:
+            candidate = (police_angle + turn) % 360
+            rad = math.radians(candidate)
+            fx  = -math.sin(rad)
+            fy  =  math.cos(rad)
+            test_x = police_x + fx * POLICE_SPEED
+            test_y = police_y + fy * POLICE_SPEED
+            if (abs(test_x) > limit or abs(test_y) > limit or
+                    is_colliding(test_x, test_y, CAR_RADIUS)):
+                continue
+            # dot product: how much does this direction face the player?
+            to_px = px - police_x
+            to_py = py - police_y
+            length = math.hypot(to_px, to_py)
+            if length == 0:
+                continue
+            dot = (fx * to_px + fy * to_py) / length
+            if dot > best_dot:
+                best_dot   = dot
+                best_angle = candidate
+        police_angle = float(best_angle)
+
+        # snap back onto the nearest road so it doesn't get stuck in a gap
+        new_cur = police_angle % 360
+        if new_cur in (0, 180):
+            police_x = float(min(ROAD_COORDS, key=lambda r: abs(r - police_x)))
+        else:
+            police_y = float(min(ROAD_COORDS, key=lambda r: abs(r - police_y)))
+
+    else:
+        police_x = new_px
+        police_y = new_py
+
+        # at an intersection opportunistically steer toward the player
+        on_x_road = any(abs(police_x - rx) < SNAP_THRESHOLD for rx in ROAD_COORDS)
+        on_y_road = any(abs(police_y - ry) < SNAP_THRESHOLD for ry in ROAD_COORDS)
+
+        if on_x_road and on_y_road:
+            # decide preferred direction toward player
+            dx = px - police_x
+            dy = py - police_y
+
+            if cur_angle in (0, 180):        # currently on Y road, can turn onto X
+                if abs(dx) > abs(dy) * 0.5:  # player is more sideways than ahead
+                    wanted = 90 if dx > 0 else 270
+                    rad = math.radians(wanted)
+                    tx  = police_x + (-math.sin(rad)) * POLICE_SPEED
+                    ty  = police_y + ( math.cos(rad)) * POLICE_SPEED
+                    if not is_colliding(tx, ty, CAR_RADIUS):
+                        police_angle = float(wanted)
+                        police_y = float(min(ROAD_COORDS,
+                                             key=lambda r: abs(r - police_y)))
+            else:                            # currently on X road, can turn onto Y
+                if abs(dy) > abs(dx) * 0.5:
+                    wanted = 0 if dy > 0 else 180
+                    rad = math.radians(wanted)
+                    tx  = police_x + (-math.sin(rad)) * POLICE_SPEED
+                    ty  = police_y + ( math.cos(rad)) * POLICE_SPEED
+                    if not is_colliding(tx, ty, CAR_RADIUS):
+                        police_angle = float(wanted)
+                        police_x = float(min(ROAD_COORDS,
+                                             key=lambda r: abs(r - police_x)))
+
+    # ── catch check — game over if police touches player / player car ──────────
+    catch_radius = 40 if player_in_car else 22
+    if math.hypot(px - police_x, py - police_y) < catch_radius:
+        game_over = True
+        _clear_heat()
+        return
+
+    # ── safe house escape ──────────────────────────────────────────────────────
+    sx, sy, _, _ = interactive_zones["safe_house"]
+    if math.hypot(px - sx, py - sy) < SAFEHOUSE_ESCAPE:
+        _clear_heat()
+        
+
+def _clear_heat():
+    global suspicion_level, heat_level, police_active, k9_cooldown
+    suspicion_level = 0
+    heat_level      = 0
+    police_active   = False
+    k9_cooldown     = {}
+    
 
 def _player_world_pos():
     """Return the 2-D world position of the player (or car if driving)."""
@@ -588,6 +936,7 @@ def update_mission():
             drug_picked_up    = False
             missions_completed += 1
             player_money += 100
+            _clear_heat()  
             if missions_completed >= 3:
                 mission_state = "done"
                 mission_hint  = "All 3 missions complete!  Good work."
@@ -1280,9 +1629,11 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
 
 
 def show_status():
-    draw_text(10, screen_height - 30, f"Lives: {player_life_remaining}")
-    draw_text(10, screen_height - 60, f"Score: {game_score}")
+    draw_text(10, screen_height - 30, f"Suspicion: {'|' * suspicion_level + '.' * (3 - suspicion_level)}  ({suspicion_level}/3)")
+    draw_text(10, screen_height - 60, f"Heat: {'WANTED' if heat_level else 'clean'}")
     draw_text(10, screen_height - 90, f"Money: ${player_money}")
+    
+    
     if player_in_car:
         draw_text(10, screen_height - 120, f"IN CAR  speed={car_speed:.1f}")
     if game_over:
@@ -1511,7 +1862,10 @@ def draw_minimap():
 
     sx,sy,sw,sh = interactive_zones["safe_house"]
     blips.append((sx, sy, 0.1, 1.0, 0.25, 22))     # green — safe house
-
+    
+    if police_active:
+        blips.append((police_x, police_y, 0.9, 0.9, 1.0, 18))   # white-blue — police
+    
     if mission_state == "going_pickup":
         pick_x,pick_y = MISSION_DEFS[current_mission_idx]["pickup"]
         blips.append((pick_x, pick_y, 0.15, 0.55, 1.0, 18))   # BLUE — pickup
@@ -1657,6 +2011,8 @@ def showScreen():
         draw_player(player_pos,player_angle,first_person,game_over)
 
     draw_car()
+    draw_k9_zones()
+    draw_police_car()
     draw_npc_cars()   
     draw_bullets()
     draw_mission_markers()
@@ -1686,6 +2042,7 @@ def animate():
 
     update_car()
     update_npc_cars(delta_time)
+    update_heat(delta_time)
     update_mission()   
     if game_over or game_paused or game_menu_open:
         glutPostRedisplay()
@@ -1748,6 +2105,7 @@ def RestartGame():
     global cheat_shoot_timer
     global npc_cars
     global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint, player_money
+    global suspicion_level, heat_level, police_active, k9_cooldown
     
     npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
 
@@ -1778,6 +2136,10 @@ def RestartGame():
     drug_picked_up      = False
     mission_hint        = ""
     player_money = 0
+    suspicion_level = 0
+    heat_level      = 0
+    police_active   = False
+    k9_cooldown     = {}
     
 
 
