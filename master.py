@@ -515,6 +515,7 @@ player_angle = 0
 player_speed = 8
 rotation_speed = 5
 PLAYER_LIMIT = MAP_SIZE - 30
+RUN_SPEED = player_speed * 2
 
 # bullets
 bullets = []
@@ -581,6 +582,39 @@ CAR_FUEL_IDLE     = 0.005   # tiny drain even while idling in car
 FUEL_COST_PER_L   = 2       # $ per unit of fuel
 GAS_STATION_RADIUS = 110    # how close car must be to refuel
 fuel_hint         = ""      # shown near gas station
+
+
+
+#SHOP
+SHOP_PANEL_W = 800
+SHOP_PANEL_H = 600
+SHOP_BORDER  = 8
+
+shop_open    = False
+shop_message = ""
+shop_buttons = {}
+
+SHOP_REFUEL_PRICE     = 10
+SUSPICION_CLEAR_PRICE = 30
+
+BULLET_DAMAGE_BASE      = 1
+BULLET_DAMAGE_MAX_LEVEL = 3
+BULLET_DAMAGE_PRICES    = [50, 100, 150]
+bullet_damage           = BULLET_DAMAGE_BASE
+bullet_damage_level     = 0
+
+RUN_SPEED_BASE          = RUN_SPEED
+STAMINA_MAX_LEVEL       = 3
+STAMINA_BOOST_PER_LEVEL = 4
+STAMINA_PRICES          = [40, 80, 120]
+stamina_level           = 0
+
+CAR_MAX_SPEED_BASE        = car_max_speed
+CAR_SPEED_MAX_LEVEL       = 3
+CAR_SPEED_BOOST_PER_LEVEL = 5
+CAR_SPEED_PRICES          = [60, 120, 200]
+car_speed_level            = 0
+
 
 
 #steering
@@ -2208,7 +2242,7 @@ def update_bullets(delta_time):
                     continue
                 if math.hypot(bullet["x"] - cop["x"],
                               bullet["y"] - cop["y"]) < 30 + bullet_size:
-                    cop["hp"] -= 1
+                    cop["hp"] -= bullet_damage
                     if cop["hp"] <= 0:
                         cop["dead"] = True
                         game_score += 1
@@ -2398,11 +2432,12 @@ def draw_pause_menu():
     btn_w, btn_h, gap = 220, 50, 20
     cx = screen_width / 2
     cy = screen_height / 2
-    labels = ["Start New Game", "Resume", "Exit"]
+    labels = ["Resume", "Start New Game", "Restart", "Shop", "Exit"]
     menu_buttons.clear()
 
+    mid = (len(labels) - 1) / 2
     for i, label in enumerate(labels):
-        top = cy + (1 - i) * (btn_h + gap)
+        top = cy + (mid - i) * (btn_h + gap)
         bottom = top - btn_h
         left = cx - btn_w / 2
         right = cx + btn_w / 2
@@ -2431,13 +2466,202 @@ def draw_pause_menu():
         text_y = bottom + btn_h / 2 - 6
         draw_text(text_x, text_y, label)
 
+def draw_shop_screen():
+    # gray 800x600 panel, black border, centered -- one row per upgrade/action
+    if screen_width == 0 or screen_height == 0:
+        return
+
+    cx = screen_width / 2
+    cy = screen_height / 2
+    half_w = SHOP_PANEL_W / 2
+    half_h = SHOP_PANEL_H / 2
+
+    row_w, row_h, row_gap = 700, 70, 14
+    top_y = cy + half_h - 90
+    left_x = cx - row_w / 2
+
+    items = [
+        ("refuel", "Refuel Car",
+         "Tank is full" if car_fuel >= CAR_FUEL_MAX else f"{car_fuel:.0f}% fuel",
+         "FULL" if car_fuel >= CAR_FUEL_MAX else f"${SHOP_REFUEL_PRICE}"),
+        ("bullet", "Bullet Damage  (one-shot cops)",
+         f"Level {bullet_damage_level}/{BULLET_DAMAGE_MAX_LEVEL}",
+         "MAXED" if bullet_damage_level >= BULLET_DAMAGE_MAX_LEVEL
+         else f"${BULLET_DAMAGE_PRICES[bullet_damage_level]}"),
+        ("suspicion", "Reduce Suspicion",
+         f"{suspicion_level}/3 stars  ({'WANTED' if heat_level else 'clean'})",
+         f"${SUSPICION_CLEAR_PRICE}"),
+        ("stamina", "Player Stamina  (run speed)",
+         f"Level {stamina_level}/{STAMINA_MAX_LEVEL}",
+         "MAXED" if stamina_level >= STAMINA_MAX_LEVEL
+         else f"${STAMINA_PRICES[stamina_level]}"),
+        ("carspeed", "Car Top Speed",
+         f"Level {car_speed_level}/{CAR_SPEED_MAX_LEVEL}",
+         "MAXED" if car_speed_level >= CAR_SPEED_MAX_LEVEL
+         else f"${CAR_SPEED_PRICES[car_speed_level]}"),
+    ]
+
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, screen_width, 0, screen_height)
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    glDisable(GL_DEPTH_TEST)
+
+    # dim the gameplay behind the shop
+    glEnable(GL_BLEND)
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+    glColor4f(0, 0, 0, 0.65)
+    glBegin(GL_QUADS)
+    glVertex2f(0, 0)
+    glVertex2f(screen_width, 0)
+    glVertex2f(screen_width, screen_height)
+    glVertex2f(0, screen_height)
+    glEnd()
+    glDisable(GL_BLEND)
+
+    # black border, slightly larger than the panel
+    glColor3f(0, 0, 0)
+    glBegin(GL_QUADS)
+    glVertex2f(cx - half_w - SHOP_BORDER, cy - half_h - SHOP_BORDER)
+    glVertex2f(cx + half_w + SHOP_BORDER, cy - half_h - SHOP_BORDER)
+    glVertex2f(cx + half_w + SHOP_BORDER, cy + half_h + SHOP_BORDER)
+    glVertex2f(cx - half_w - SHOP_BORDER, cy + half_h + SHOP_BORDER)
+    glEnd()
+
+    # gray 800x600 panel
+    glColor3f(0.55, 0.55, 0.55)
+    glBegin(GL_QUADS)
+    glVertex2f(cx - half_w, cy - half_h)
+    glVertex2f(cx + half_w, cy - half_h)
+    glVertex2f(cx + half_w, cy + half_h)
+    glVertex2f(cx - half_w, cy + half_h)
+    glEnd()
+
+    # one row per shop item
+    shop_buttons.clear()
+    for i, (item_id, _name, _status, _price) in enumerate(items):
+        top = top_y - i * (row_h + row_gap)
+        bottom = top - row_h
+
+        glColor3f(0.33, 0.33, 0.37)
+        glBegin(GL_QUADS)
+        glVertex2f(left_x, bottom)
+        glVertex2f(left_x + row_w, bottom)
+        glVertex2f(left_x + row_w, top)
+        glVertex2f(left_x, top)
+        glEnd()
+
+        glColor3f(0, 0, 0)
+        glBegin(GL_LINE_LOOP)
+        glVertex2f(left_x, bottom)
+        glVertex2f(left_x + row_w, bottom)
+        glVertex2f(left_x + row_w, top)
+        glVertex2f(left_x, top)
+        glEnd()
+
+        shop_buttons[item_id] = (left_x, bottom, left_x + row_w, top)
+
+    glEnable(GL_DEPTH_TEST)
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+    glPopMatrix()
+
+    # text, drawn after popping -- draw_text sets up its own ortho each call
+    draw_text(cx - 30, cy + half_h - 40, "SHOP")
+    draw_text(cx + half_w - 150, cy + half_h - 40, f"Money: ${player_money}")
+
+    for i, (item_id, name, status, price_text) in enumerate(items):
+        top = top_y - i * (row_h + row_gap)
+        bottom = top - row_h
+        draw_text(left_x + 16, bottom + row_h - 22, name)
+        draw_text(left_x + 16, bottom + 10, status)
+        draw_text(left_x + row_w - 80, bottom + row_h / 2 - 6, price_text)
+
+    if shop_message:
+        draw_text(cx - len(shop_message) * 4, cy - half_h + 40, shop_message)
+    draw_text(cx - 95, cy - half_h + 14, "Press ESC to go back")
+
+def handle_shop_click(item_id):
+    # runs when a shop row is clicked
+    global player_money, shop_message, car_fuel
+    global bullet_damage, bullet_damage_level
+    global RUN_SPEED, stamina_level
+    global car_max_speed, car_speed_level
+
+    if item_id == "refuel":
+        if car_fuel >= CAR_FUEL_MAX:
+            shop_message = "Tank is already full!"
+        elif player_money < SHOP_REFUEL_PRICE:
+            shop_message = f"Not enough money! Need ${SHOP_REFUEL_PRICE}"
+        else:
+            player_money -= SHOP_REFUEL_PRICE
+            car_fuel = CAR_FUEL_MAX
+            shop_message = "Full tank!"
+
+    elif item_id == "bullet":
+        if bullet_damage_level >= BULLET_DAMAGE_MAX_LEVEL:
+            shop_message = "Bullet damage already maxed!"
+        else:
+            price = BULLET_DAMAGE_PRICES[bullet_damage_level]
+            if player_money < price:
+                shop_message = f"Not enough money! Need ${price}"
+            else:
+                player_money -= price
+                bullet_damage_level += 1
+                bullet_damage += 1
+                shop_message = f"Bullet damage upgraded! (Lv {bullet_damage_level})"
+
+    elif item_id == "suspicion":
+        if suspicion_level <= 0 and heat_level <= 0:
+            shop_message = "You're already clean!"
+        elif player_money < SUSPICION_CLEAR_PRICE:
+            shop_message = f"Not enough money! Need ${SUSPICION_CLEAR_PRICE}"
+        else:
+            player_money -= SUSPICION_CLEAR_PRICE
+            _clear_heat()
+            shop_message = "Suspicion cleared!"
+
+    elif item_id == "stamina":
+        if stamina_level >= STAMINA_MAX_LEVEL:
+            shop_message = "Stamina already maxed!"
+        else:
+            price = STAMINA_PRICES[stamina_level]
+            if player_money < price:
+                shop_message = f"Not enough money! Need ${price}"
+            else:
+                player_money -= price
+                stamina_level += 1
+                RUN_SPEED += STAMINA_BOOST_PER_LEVEL
+                shop_message = f"Stamina upgraded! (Lv {stamina_level})"
+
+    elif item_id == "carspeed":
+        if car_speed_level >= CAR_SPEED_MAX_LEVEL:
+            shop_message = "Car speed already maxed!"
+        else:
+            price = CAR_SPEED_PRICES[car_speed_level]
+            if player_money < price:
+                shop_message = f"Not enough money! Need ${price}"
+            else:
+                player_money -= price
+                car_speed_level += 1
+                car_max_speed += CAR_SPEED_BOOST_PER_LEVEL
+                shop_message = f"Car speed upgraded! (Lv {car_speed_level})"
 
 def handle_menu_click(label):
-    # runs when a menu button is clicked
-    global game_menu_open
+    # runs when a pause-menu button is clicked
+    global game_menu_open, shop_open
     if label == "Start New Game":
         RestartGame()
         game_menu_open = False
+    elif label == "Restart":
+        RestartGame()
+        game_menu_open = False
+    elif label == "Shop":
+        shop_open = True
     elif label == "Resume":
         game_menu_open = False
     elif label == "Exit":
@@ -2753,7 +2977,10 @@ def showScreen():
     draw_mission_markers()
     
     if game_menu_open:
-        draw_pause_menu()
+        if shop_open:
+            draw_shop_screen()
+        else:
+            draw_pause_menu()
 
     # Minimap
     draw_minimap()
@@ -2842,6 +3069,8 @@ def RestartGame():
     global car_fuel, fuel_hint
     global final_mission_state, bomb_picked_up, bomb_planted, bomb_cooldown_timer
     global building_cops, building_cops_spawned, final_police_cars
+    global shop_open, shop_message, bullet_damage, bullet_damage_level
+    global RUN_SPEED, stamina_level, car_max_speed, car_speed_level
 
     npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
 
@@ -2861,6 +3090,16 @@ def RestartGame():
     
     car_fuel  = CAR_FUEL_MAX
     fuel_hint = ""
+
+    #shop / upgrades
+    shop_open           = False
+    shop_message        = ""
+    bullet_damage       = BULLET_DAMAGE_BASE
+    bullet_damage_level = 0
+    RUN_SPEED           = RUN_SPEED_BASE
+    stamina_level       = 0
+    car_max_speed       = CAR_MAX_SPEED_BASE
+    car_speed_level     = 0
     
     #CHEAT
     cheat_mode      = False
@@ -2912,12 +3151,18 @@ def keyboardListener(key, x, y):
     nk = key.lower() if isinstance(key, bytes) else key
     
     # esc toggles the pause menu
+    # esc: shop -> pause menu -> resume game (and open pause menu from gameplay)
     if key == b'\x1b':
-        global game_menu_open
-        game_menu_open = not game_menu_open
+        global game_menu_open, shop_open
+        if shop_open:
+            shop_open = False
+        elif game_menu_open:
+            game_menu_open = False
+        else:
+            game_menu_open = True
         return
 
-    # block all other input while the menu is open
+    # block all other input while the menu (or the shop) is open
     if game_menu_open:
         return
 
@@ -3081,10 +3326,16 @@ def mouseListener(button, state, x, y):
         if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
             # glut gives y from the top, flip it to match our bottom-up button rects
             click_y = screen_height - y
-            for label, (left, bottom, right, top) in menu_buttons.items():
-                if left <= x <= right and bottom <= click_y <= top:
-                    handle_menu_click(label)
-                    break
+            if shop_open:
+                for item_id, (left, bottom, right, top) in shop_buttons.items():
+                    if left <= x <= right and bottom <= click_y <= top:
+                        handle_shop_click(item_id)
+                        break
+            else:
+                for label, (left, bottom, right, top) in menu_buttons.items():
+                    if left <= x <= right and bottom <= click_y <= top:
+                        handle_menu_click(label)
+                        break
         return
 
     if game_over:
