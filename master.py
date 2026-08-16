@@ -264,6 +264,79 @@ def draw_gas_station():
         draw_cube(px, zy - 25, 10, 8, 10, 20, (0.86, 0.12, 0.12))
         draw_cube(px, zy - 30.5, 13, 5, 1, 6, (0.15, 0.18, 0.20))
 
+def draw_brac_university():
+    bx, by = BRAC_POS
+    bw, bh = BRAC_W, BRAC_H
+
+    # ── main building body — covers the exact measured footprint ──────────────
+    draw_cube(bx, by, 100, bw, bh, 200, (0.88, 0.94, 0.84))   # tall white-green body
+
+    # dark base band
+    draw_cube(bx, by, 8,  bw + 4, bh + 4, 16, (0.30, 0.52, 0.24))
+
+    # roof slab
+    draw_cube(bx, by, 204, bw + 6, bh + 6, 8,  (0.30, 0.52, 0.24))
+
+    # roof structure
+    draw_cube(bx, by, 210, bw * 0.6, bh * 0.3, 14, (0.24, 0.44, 0.18))
+
+    # ── BRAC UNIVERSITY banner — long green slab across the south face ────────
+    # south face is at y = by - bh/2
+    south_y = by - bh / 2
+    draw_cube(bx, south_y - 3, 75, bw + 10, 6, 22, (0.10, 0.40, 0.10))
+    # white stripe below banner
+    draw_cube(bx, south_y - 3, 61, bw + 10, 6,  4, (0.95, 0.95, 0.95))
+    
+    # BRAC UNIVERSITY lettering, sitting on the green banner
+    draw_text_3d(bx - 60, south_y - 6, 78, "BRAC UNIVERSITY")
+
+    # ── gate opening in south face ────────────────────────────────────────────
+    # left pillar
+    draw_cube(bx - 22, south_y - 2, 30, 14, 6, 60, (0.30, 0.52, 0.24))
+    # right pillar
+    draw_cube(bx + 22, south_y - 2, 30, 14, 6, 60, (0.30, 0.52, 0.24))
+    # arch over gate
+    draw_cube(bx, south_y - 2, 64, 58, 6, 10, (0.30, 0.52, 0.24))
+
+    # ── windows on south face ─────────────────────────────────────────────────
+    for wx2 in (-45, 0, 45):
+        for wz in (25, 60, 100, 140, 175):
+            draw_cube(bx + wx2, south_y - 1, wz, 18, 2, 20, (0.08, 0.10, 0.12))
+            draw_cube(bx + wx2, south_y - 2, wz, 14, 2, 16, (0.30, 0.67, 0.88))
+
+    # ── corner columns ────────────────────────────────────────────────────────
+    for cx2 in (-bw/2 + 8, bw/2 - 8):
+        for cy2 in (-bh/2 + 8, bh/2 - 8):
+            draw_cube(bx + cx2, by + cy2, 102, 12, 12, 204, (0.75, 0.88, 0.70))
+
+
+    # ── bomb plant marker — outside the gate, while the bomb still needs planting ─
+    if final_mission_state == "plant_bomb":
+        gx, gy = BRAC_GATE_POS
+        glPushMatrix()
+        glColor3f(1.0, 0.15, 0.15)
+        glTranslatef(gx, gy, 60)
+        glutSolidSphere(14, 12, 8)
+        glPopMatrix()
+        glPushMatrix()
+        glColor3f(1.0, 0.15, 0.15)
+        glTranslatef(gx, gy, 2)
+        gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
+        glPopMatrix()
+
+    # ── planted dynamite — red cylinder + fuse, sitting outside the gate ────────
+    if bomb_planted:
+        gx, gy = BRAC_GATE_POS
+        glPushMatrix()
+        glColor3f(0.75, 0.05, 0.05)
+        glTranslatef(gx, gy, 4)
+        gluCylinder(gluNewQuadric(), 6, 6, 18, 12, 4)
+        glPopMatrix()
+        glPushMatrix()
+        glColor3f(0.15, 0.10, 0.05)
+        glTranslatef(gx, gy, 22)
+        gluCylinder(gluNewQuadric(), 0.8, 0.4, 10, 6, 2)
+        glPopMatrix()
 
 def draw_safe_house():
     zx, zy, zw, zh = interactive_zones["safe_house"]
@@ -304,6 +377,7 @@ def draw_city():
 
     draw_gas_station()
     draw_safe_house()
+    draw_brac_university()
     draw_street_details()
 
 
@@ -563,6 +637,34 @@ police_angle     = 0.0
 POLICE_SPEED     = 4
 
 
+#FINAL MISSION
+BRAC_POS         = (51.0, -551.0)
+BRAC_W           = 127
+BRAC_H           = 180
+
+# Gate is on the south face (low y side), just outside
+BRAC_GATE_POS    = (51.0, -648.0)
+BRAC_GATE_RADIUS = 60
+
+BOMB_PICKUP_POS    = (-414.0, 509.0)
+BOMB_PICKUP_RADIUS = 70
+
+
+FINAL_SAFEHOUSE_RADIUS = 130
+
+final_mission_state   = "locked"
+bomb_picked_up        = False
+bomb_planted          = False
+
+final_police_cars     = []
+FINAL_POLICE_SPEED    = 5
+
+building_cops         = []
+BUILDING_COP_COUNT    = 10
+building_cops_spawned = False
+
+
+
 def draw_k9_dog(x, y):
     glPushMatrix()
     glTranslatef(x, y, 10)   # lift the whole dog up so legs sit on ground
@@ -738,6 +840,294 @@ def draw_police_car():
         glPopMatrix()
 
     glPopMatrix()
+
+def draw_building_cops():
+    """Foot cops inside the BRAC building."""
+    for cop in building_cops:
+        if cop.get("dead"):
+            continue
+        glPushMatrix()
+        glTranslatef(cop["x"], cop["y"], 0)
+        glRotatef(cop["angle"], 0, 0, 1)
+        glScalef(0.15, 0.15, 0.15)
+
+        # body — dark blue uniform
+        glColor3f(0.10, 0.14, 0.45)
+        glPushMatrix()
+        glTranslatef(0, 0, 92)
+        glScalef(80, 40, 120)
+        glutSolidCube(1)
+        glPopMatrix()
+
+        # head
+        glColor3f(1.0, 0.80, 0.60)
+        glPushMatrix()
+        glTranslatef(0, 0, 185)
+        gluSphere(gluNewQuadric(), 35, 10, 8)
+        glPopMatrix()
+
+        # hat
+        glColor3f(0.10, 0.14, 0.45)
+        glPushMatrix()
+        glTranslatef(0, 0, 220)
+        glScalef(60, 60, 20)
+        glutSolidCube(1)
+        glPopMatrix()
+
+        glPopMatrix()
+
+
+def draw_final_police_cars():
+    for pc in final_police_cars:
+        glPushMatrix()
+        glTranslatef(pc["x"], pc["y"], 0)
+        glRotatef(pc["angle"], 0, 0, 1)
+
+        glColor3f(0.95, 0.95, 0.95)
+        draw_car_body()
+
+        # light bar
+        glPushMatrix()
+        glColor3f(0.1, 0.1, 0.9)
+        glTranslatef(-5, -5, 25)
+        glScalef(7, 12, 4)
+        glutSolidCube(1)
+        glPopMatrix()
+        glPushMatrix()
+        glColor3f(0.9, 0.05, 0.05)
+        glTranslatef(5, -5, 25)
+        glScalef(7, 12, 4)
+        glutSolidCube(1)
+        glPopMatrix()
+
+        # side stripes
+        for sx in (-20, 20):
+            glPushMatrix()
+            glColor3f(0.1, 0.2, 0.9)
+            glTranslatef(sx, -1, 7)
+            glScalef(2, 45, 4)
+            glutSolidCube(1)
+            glPopMatrix()
+
+        # wheels
+        q = gluNewQuadric()
+        for wx in (-18, 18):
+            for wy in (-20, 20):
+                glPushMatrix()
+                glColor3f(0.03, 0.03, 0.03)
+                glTranslatef(wx, wy, 6)
+                glRotatef(90, 0, 1, 0)
+                gluCylinder(q, 6, 6, 3, 16, 3)
+                glPopMatrix()
+                glPushMatrix()
+                glColor3f(0.7, 0.7, 0.72)
+                glTranslatef(wx * (18.2 / 18), wy, 6)
+                glRotatef(90, 0, 1, 0)
+                gluDisk(gluNewQuadric(), 0, 3.5, 12, 1)
+                glPopMatrix()
+
+        glPopMatrix()
+
+def update_final_mission(delta_time):
+    global final_mission_state, bomb_picked_up, bomb_planted
+    global player_inside_brac, building_cops, building_cops_spawned
+    global final_mission_state, bomb_picked_up, bomb_planted
+    global building_cops, building_cops_spawned
+    
+
+    # only active after all 3 normal missions done
+    if missions_completed < 3:
+        return
+
+    if final_mission_state == "locked":
+        final_mission_state = "get_bomb"
+        mission_hint = "FINAL MISSION: Go pick up the bomb package!"
+        return
+
+    px, py = _player_world_pos()
+    bx, by = BRAC_POS
+    sx, sy, _, _ = interactive_zones["safe_house"]
+
+    # ── phase 1: pick up the bomb ──────────────────────────────────────────────
+    if final_mission_state == "get_bomb":
+        dist = math.hypot(px - BOMB_PICKUP_POS[0], py - BOMB_PICKUP_POS[1])
+        mission_hint = f"FINAL: Pick up the bomb  ({dist:.0f} away)"
+        if dist < BOMB_PICKUP_RADIUS:
+            bomb_picked_up      = True
+            final_mission_state = "drive_to_brac"
+            mission_hint        = "FINAL: Drive to BRAC University!"
+
+    # ── phase 2: drive to the marker outside the BRAC gate ─────────────────────
+    elif final_mission_state == "drive_to_brac":
+        dist = math.hypot(px - BRAC_GATE_POS[0], py - BRAC_GATE_POS[1])
+        mission_hint = f"FINAL: Reach the marker outside BRAC University  ({dist:.0f} away)"
+        if dist < BRAC_GATE_RADIUS:
+            final_mission_state = "plant_bomb"
+            mission_hint        = "FINAL: Press F to plant the bomb!"
+
+    # ── phase 3: plant the bomb at the marker ───────────────────────────────────
+    elif final_mission_state == "plant_bomb":
+        dist = math.hypot(px - BRAC_GATE_POS[0], py - BRAC_GATE_POS[1])
+        if dist < BRAC_GATE_RADIUS:
+            mission_hint = "FINAL: Press F to plant the bomb!"
+        else:
+            final_mission_state = "drive_to_brac"  # walked away from the marker
+
+    # ── phase 5: fight out — cops attack, player must kill them ───────────────
+    elif final_mission_state == "fight_out":
+        if not building_cops_spawned:
+            building_cops_spawned = True
+            # spawn cops in a ring around the building
+            for i in range(BUILDING_COP_COUNT):
+                angle = 2 * math.pi * i / BUILDING_COP_COUNT
+                ox = math.cos(angle) * 55
+                oy = math.sin(angle) * 55
+                building_cops.append({
+                    "x": bx + ox, "y": by + oy,
+                    "angle": 0.0,
+                    "hp": 2,
+                    "dead": False,
+                })
+            # spawn 2 police cars on roads nearby
+            for spawn in [(-300, -450), (300, -450)]:
+                final_police_cars.append({
+                    "x": float(spawn[0]), "y": float(spawn[1]),
+                    "angle": float(random.choice([0, 90, 180, 270])),
+                    "stuck_timer": 0.0,
+                })
+
+        mission_hint = (
+            f"FINAL: Kill the cops ({sum(1 for c in building_cops if not c['dead'])}"
+            f" remaining) then escape to Safe House!"
+        )
+
+        # update cops — chase and shoot player
+        for cop in building_cops:
+            if cop["dead"]:
+                continue
+            dx = px - cop["x"]
+            dy = py - cop["y"]
+            dist = math.hypot(dx, dy)
+            if dist > 0:
+                cop["angle"] = math.degrees(math.atan2(-dx, dy))
+                step = min(3.0, dist)
+                cop["x"] += (dx / dist) * step
+                cop["y"] += (dy / dist) * step
+
+            if dist < 25:
+                game_over = True   # cop caught the player
+                return
+
+    
+        all_dead = all(c["dead"] for c in building_cops)
+        if all_dead:
+            final_mission_state = "escape"
+            mission_hint = "FINAL: Cops down! Get to the Safe House NOW!"
+
+        # update final police cars — road-following same as main police
+        _update_final_police_cars(delta_time, px, py)
+
+        # final police car catch
+        for pc in final_police_cars:
+            catch_r = CAR_RADIUS * 2 if player_in_car else 22
+            if math.hypot(px - pc["x"], py - pc["y"]) < catch_r:
+                game_over = True
+                return
+
+    # ── phase 6: escape to safe house ─────────────────────────────────────────
+    elif final_mission_state == "escape":
+        mission_hint = "FINAL: Reach the Safe House to WIN!"
+        _update_final_police_cars(delta_time, px, py)
+
+        for pc in final_police_cars:
+            catch_r = CAR_RADIUS * 2 if player_in_car else 22
+            if math.hypot(px - pc["x"], py - pc["y"]) < catch_r:
+                game_over = True
+                return
+
+        if math.hypot(px - sx, py - sy) < FINAL_SAFEHOUSE_RADIUS:
+            final_mission_state = "victory"
+            final_police_cars.clear()
+            mission_hint = ""
+
+    elif final_mission_state == "victory":
+        pass   # handled by show_status
+
+
+def _update_final_police_cars(delta_time, px, py):
+    """Road-following chase for final mission police cars."""
+    ROAD_COORDS    = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+    SNAP_THRESHOLD = 10
+    limit          = MAP_SIZE - 50
+
+    for pc in final_police_cars:
+        cur_angle = pc["angle"] % 360
+        rad       = math.radians(pc["angle"])
+        fx        = -math.sin(rad)
+        fy        =  math.cos(rad)
+
+        new_px = pc["x"] + fx * FINAL_POLICE_SPEED
+        new_py = pc["y"] + fy * FINAL_POLICE_SPEED
+
+        blocked = (
+            abs(new_px) > limit or abs(new_py) > limit or
+            is_colliding(new_px, new_py, CAR_RADIUS)
+        )
+
+        if blocked:
+            best_angle = pc["angle"]
+            best_dot   = -999
+            for turn in [90, -90, 180]:
+                candidate = (pc["angle"] + turn) % 360
+                r2 = math.radians(candidate)
+                fx2, fy2 = -math.sin(r2), math.cos(r2)
+                tx = pc["x"] + fx2 * FINAL_POLICE_SPEED
+                ty = pc["y"] + fy2 * FINAL_POLICE_SPEED
+                if abs(tx) > limit or abs(ty) > limit or is_colliding(tx, ty, CAR_RADIUS):
+                    continue
+                to_px = px - pc["x"]
+                to_py = py - pc["y"]
+                length = math.hypot(to_px, to_py)
+                if length == 0:
+                    continue
+                dot = (fx2 * to_px + fy2 * to_py) / length
+                if dot > best_dot:
+                    best_dot   = dot
+                    best_angle = candidate
+            pc["angle"] = float(best_angle)
+            new_cur = pc["angle"] % 360
+            if new_cur in (0, 180):
+                pc["x"] = float(min(ROAD_COORDS, key=lambda r: abs(r - pc["x"])))
+            else:
+                pc["y"] = float(min(ROAD_COORDS, key=lambda r: abs(r - pc["y"])))
+        else:
+            pc["x"] = new_px
+            pc["y"] = new_py
+
+            on_x = any(abs(pc["x"] - rx) < SNAP_THRESHOLD for rx in ROAD_COORDS)
+            on_y = any(abs(pc["y"] - ry) < SNAP_THRESHOLD for ry in ROAD_COORDS)
+            if on_x and on_y:
+                dx = px - pc["x"]
+                dy = py - pc["y"]
+                if cur_angle in (0, 180):
+                    if abs(dx) > abs(dy) * 0.5:
+                        wanted = 90 if dx > 0 else 270
+                        r2 = math.radians(wanted)
+                        if not is_colliding(pc["x"] + (-math.sin(r2)) * FINAL_POLICE_SPEED,
+                                            pc["y"] + math.cos(r2) * FINAL_POLICE_SPEED,
+                                            CAR_RADIUS):
+                            pc["angle"] = float(wanted)
+                            pc["y"] = float(min(ROAD_COORDS, key=lambda r: abs(r - pc["y"])))
+                else:
+                    if abs(dy) > abs(dx) * 0.5:
+                        wanted = 0 if dy > 0 else 180
+                        r2 = math.radians(wanted)
+                        if not is_colliding(pc["x"] + (-math.sin(r2)) * FINAL_POLICE_SPEED,
+                                            pc["y"] + math.cos(r2) * FINAL_POLICE_SPEED,
+                                            CAR_RADIUS):
+                            pc["angle"] = float(wanted)
+                            pc["x"] = float(min(ROAD_COORDS, key=lambda r: abs(r - pc["x"])))
+
 
 
 def update_heat(delta_time):
@@ -1112,38 +1502,48 @@ def try_start_mission():
 
 def draw_mission_markers():
     """Draw a floating sphere at pickup and dropoff locations when active."""
-    if mission_state not in ("going_pickup", "carrying"):
-        return
 
-    m = MISSION_DEFS[current_mission_idx]
+    if mission_state in ("going_pickup", "carrying"):
+        m = MISSION_DEFS[current_mission_idx]
 
-    # pickup — yellow sphere (only visible before picked up)
-    if mission_state == "going_pickup":
-        px, py = m["pickup"]
+        if mission_state == "going_pickup":
+            px, py = m["pickup"]
+            glPushMatrix()
+            glColor3f(0.15, 0.55, 1.0)
+            glTranslatef(px, py, 60)
+            glutSolidSphere(14, 12, 8)
+            glPopMatrix()
+            glPushMatrix()
+            glColor3f(0.15, 0.55, 1.0)
+            glTranslatef(px, py, 2)
+            gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
+            glPopMatrix()
+
+        dx, dy = m["dropoff"]
         glPushMatrix()
         glColor3f(0.15, 0.55, 1.0)
-        glTranslatef(px, py, 60)
+        glTranslatef(dx, dy, 60)
         glutSolidSphere(14, 12, 8)
         glPopMatrix()
-        # vertical pole so it's visible from a distance
         glPushMatrix()
         glColor3f(0.15, 0.55, 1.0)
-        glTranslatef(px, py, 2)
+        glTranslatef(dx, dy, 2)
         gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
         glPopMatrix()
 
-    # dropoff — green sphere
-    dx, dy = m["dropoff"]
-    glPushMatrix()
-    glColor3f(0.15, 0.55, 1.0)
-    glTranslatef(dx, dy, 60)
-    glutSolidSphere(14, 12, 8)
-    glPopMatrix()
-    glPushMatrix()
-    glColor3f(0.15, 0.55, 1.0)
-    glTranslatef(dx, dy, 2)
-    gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
-    glPopMatrix()
+    # final mission — bomb pickup, independent of the drug mission's state
+    if final_mission_state == "get_bomb":
+        glPushMatrix()
+        glColor3f(0.9, 0.2, 0.9)
+        glTranslatef(BOMB_PICKUP_POS[0], BOMB_PICKUP_POS[1], 60)
+        glutSolidSphere(14, 12, 8)
+        glPopMatrix()
+        glPushMatrix()
+        glColor3f(0.9, 0.2, 0.9)
+        glTranslatef(BOMB_PICKUP_POS[0], BOMB_PICKUP_POS[1], 2)
+        gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
+        glPopMatrix()
+
 
 def show_mission_hud():
     if mission_hint:
@@ -1791,6 +2191,20 @@ def update_bullets(delta_time):
                     enemies.remove(enemy)
                 hit = True
                 break
+            
+        # check building cops
+        if not hit:
+            for cop in building_cops:
+                if cop["dead"]:
+                    continue
+                if math.hypot(bullet["x"] - cop["x"],
+                              bullet["y"] - cop["y"]) < 30 + bullet_size:
+                    cop["hp"] -= 1
+                    if cop["hp"] <= 0:
+                        cop["dead"] = True
+                        game_score += 1
+                    hit = True
+                    break
 
         if hit:
             continue
@@ -1802,6 +2216,8 @@ def update_bullets(delta_time):
         
 
         remaining.append(bullet)
+        
+    bullets = remaining
 
     
 def _draw_fuel_bar():
@@ -1889,6 +2305,13 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     glMatrixMode(GL_MODELVIEW)
 
 
+def draw_text_3d(x, y, z, text, font=GLUT_BITMAP_HELVETICA_18):
+    # bitmap text anchored to a world position, e.g. signage on a building
+    glColor3f(1, 1, 1)
+    glRasterPos3f(x, y, z)
+    for ch in text:
+        glutBitmapCharacter(font, ord(ch))
+
 def show_status():
     px, py = _player_world_pos()
     draw_text(10, screen_height - 240, f"POS  x={px:.0f}  y={py:.0f}")
@@ -1915,6 +2338,25 @@ def show_status():
         draw_text(screen_width // 2 - 40, screen_height // 2, "PAUSED")
 
     show_mission_hud()
+    
+    # BRAC University floating label (always visible near building)
+    if final_mission_state != "locked":
+        px2, py2 = _player_world_pos()
+        if math.hypot(px2 - BRAC_POS[0], py2 - BRAC_POS[1]) < 400:
+            draw_text(screen_width // 2 - 70, screen_height - 120,
+                      "[ BRAC UNIVERSITY ]")
+        if final_mission_state in ("drive_to_brac", "plant_bomb"):
+            draw_text(screen_width // 2 - 100, screen_height - 145,
+                      "Drive to the gate on the south side")
+
+    # victory screen
+    if final_mission_state == "victory":
+        draw_text(screen_width // 2 - 140, screen_height // 2 + 40,
+                  "MISSION COMPLETE!  You Win!")
+        draw_text(screen_width // 2 - 120, screen_height // 2,
+                  f"Final Score: {game_score}   Money: ${player_money}")
+        draw_text(screen_width // 2 - 80, screen_height // 2 - 40,
+                  "Press R to play again")
 
 
 def draw_pause_menu():
@@ -2128,7 +2570,7 @@ def draw_minimap():
     blips = []
 
     gx,gy,gw,gh = interactive_zones["gas_station"]
-    blips.append((gx, gy, 1.0, 0.15, 0.15, 22))   # red — gas station
+    blips.append((gx, gy, 0.65, 0.10, 0.90, 22))   # purple — gas station
 
     sx,sy,sw,sh = interactive_zones["safe_house"]
     blips.append((sx, sy, 0.1, 1.0, 0.25, 22))     # green — safe house
@@ -2142,7 +2584,19 @@ def draw_minimap():
 
     if mission_state == "carrying":
         drop_x,drop_y = MISSION_DEFS[current_mission_idx]["dropoff"]
-        blips.append((drop_x, drop_y, 0.15, 0.55, 1.0, 18))    # green — dropoff
+        blips.append((drop_x, drop_y, 0.15, 0.55, 1.0, 18))    # blue — dropoff
+        
+    # bomb pickup blip — RED
+    if final_mission_state == "get_bomb":
+        blips.append((BOMB_PICKUP_POS[0], BOMB_PICKUP_POS[1], 1.0, 0.05, 0.05, 18))
+
+    # BRAC university blip — RED
+    if final_mission_state in ("drive_to_brac", "plant_bomb", "fight_out", "escape"):
+        blips.append((BRAC_POS[0], BRAC_POS[1], 1.0, 0.05, 0.05, 22))
+
+    # final police car blips
+    for pc in final_police_cars:
+        blips.append((pc["x"], pc["y"], 0.9, 0.9, 1.0, 16))
 
     for (wx, wy, r, g, b, size) in blips:
         rel_x = wx - px
@@ -2283,6 +2737,8 @@ def showScreen():
     draw_car()
     draw_k9_zones()
     draw_police_car()
+    draw_final_police_cars()
+    draw_building_cops()
     draw_npc_cars()   
     draw_bullets()
     draw_mission_markers()
@@ -2314,6 +2770,7 @@ def animate():
     update_npc_cars(delta_time)
     update_heat(delta_time)
     update_mission() 
+    update_final_mission(delta_time)
     update_fuel_hint() 
     if game_over or game_paused or game_menu_open:
         glutPostRedisplay()
@@ -2374,6 +2831,8 @@ def RestartGame():
     global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint, player_money
     global suspicion_level, heat_level, police_active, k9_cooldown
     global car_fuel, fuel_hint
+    global final_mission_state, bomb_picked_up, bomb_planted
+    global building_cops, building_cops_spawned, final_police_cars
 
     npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
 
@@ -2416,6 +2875,13 @@ def RestartGame():
     police_active   = False
     k9_cooldown     = {}
     
+    #FINAL MISSION
+    final_mission_state   = "locked"
+    bomb_picked_up        = False
+    bomb_planted          = False
+    building_cops         = []
+    building_cops_spawned = False
+    final_police_cars     = []
 
 
 def keyboardListener(key, x, y):
@@ -2428,6 +2894,10 @@ def keyboardListener(key, x, y):
     global player_life_remaining, player_in_car
     global car_x, car_y, car_z, car_speed, car_angle
     global cheat_shoot_timer, game_menu_open
+    global final_mission_state
+    global mission_state, current_mission_idx, missions_completed
+    global drug_picked_up, player_money
+   
 
     nk = key.lower() if isinstance(key, bytes) else key
     
@@ -2534,7 +3004,37 @@ def keyboardListener(key, x, y):
         try_start_mission()
         return
     
+    # debug: instantly complete mission 1, 2 or 3
+    if nk in (b'1', b'2', b'3'):
+   
+        idx = int(nk) - 1   # 0-based
+        if idx >= missions_completed:
+            missions_completed  = idx + 1
+            current_mission_idx = missions_completed
+            drug_picked_up      = False
+            player_money       += 100
+            _clear_heat()
+            cheat_mode          = False
+            cheat_waypoints     = []
+            if missions_completed >= 3:
+                mission_state = "done"
+                mission_hint  = "All 3 missions complete!  Good work."
+            else:
+                mission_state = "idle"
+                mission_hint  = f"Mission {idx+1} skipped. Return to safe house for next mission."
+        return
+    
     if nk == b'f':
+        # plant the bomb at the marker just outside the BRAC gate
+        if final_mission_state == "plant_bomb":
+            px2, py2 = _player_world_pos()
+            if math.hypot(px2 - BRAC_GATE_POS[0], py2 - BRAC_GATE_POS[1]) < BRAC_GATE_RADIUS:
+                global bomb_planted
+                bomb_planted        = True
+                final_mission_state = "fight_out"
+                mission_hint        = "FINAL: BOMB PLANTED! Kill the cops and escape!"
+                return
+        # refuel (original behaviour)
         try_refuel()
         return
 
