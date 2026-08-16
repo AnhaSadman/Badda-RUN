@@ -433,6 +433,7 @@ screen_height = 0
 # game stats
 player_life_remaining = 5
 game_score = 0
+player_money = 0
 
 # player
 player_pos = [200, 100, 0]
@@ -542,7 +543,7 @@ def _near(ax, ay, bx, by, radius):
 
 def update_mission():
     global mission_state, current_mission_idx, missions_completed
-    global drug_picked_up, mission_hint
+    global drug_picked_up, mission_hint, player_money
 
     sx, sy, _, _ = interactive_zones["safe_house"]
     px, py = _player_world_pos()
@@ -586,6 +587,7 @@ def update_mission():
         if _near(px, py, drop_x, drop_y, DROPOFF_RADIUS):
             drug_picked_up    = False
             missions_completed += 1
+            player_money += 100
             if missions_completed >= 3:
                 mission_state = "done"
                 mission_hint  = "All 3 missions complete!  Good work."
@@ -626,13 +628,13 @@ def draw_mission_markers():
     if mission_state == "going_pickup":
         px, py = m["pickup"]
         glPushMatrix()
-        glColor3f(1.0, 0.85, 0.0)
+        glColor3f(0.15, 0.55, 1.0)
         glTranslatef(px, py, 60)
         glutSolidSphere(14, 12, 8)
         glPopMatrix()
         # vertical pole so it's visible from a distance
         glPushMatrix()
-        glColor3f(1.0, 0.85, 0.0)
+        glColor3f(0.15, 0.55, 1.0)
         glTranslatef(px, py, 2)
         gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
         glPopMatrix()
@@ -640,12 +642,12 @@ def draw_mission_markers():
     # dropoff — green sphere
     dx, dy = m["dropoff"]
     glPushMatrix()
-    glColor3f(0.1, 1.0, 0.3)
+    glColor3f(0.15, 0.55, 1.0)
     glTranslatef(dx, dy, 60)
     glutSolidSphere(14, 12, 8)
     glPopMatrix()
     glPushMatrix()
-    glColor3f(0.1, 1.0, 0.3)
+    glColor3f(0.15, 0.55, 1.0)
     glTranslatef(dx, dy, 2)
     gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
     glPopMatrix()
@@ -1280,8 +1282,9 @@ def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
 def show_status():
     draw_text(10, screen_height - 30, f"Lives: {player_life_remaining}")
     draw_text(10, screen_height - 60, f"Score: {game_score}")
+    draw_text(10, screen_height - 90, f"Money: ${player_money}")
     if player_in_car:
-        draw_text(10, screen_height - 90, f"IN CAR  speed={car_speed:.1f}")
+        draw_text(10, screen_height - 120, f"IN CAR  speed={car_speed:.1f}")
     if game_over:
         cx = screen_width // 2 - 80
         cy = screen_height // 2
@@ -1511,11 +1514,11 @@ def draw_minimap():
 
     if mission_state == "going_pickup":
         pick_x,pick_y = MISSION_DEFS[current_mission_idx]["pickup"]
-        blips.append((pick_x, pick_y, 1.0, 0.85, 0.0, 18))   # yellow — pickup
+        blips.append((pick_x, pick_y, 0.15, 0.55, 1.0, 18))   # BLUE — pickup
 
     if mission_state == "carrying":
         drop_x,drop_y = MISSION_DEFS[current_mission_idx]["dropoff"]
-        blips.append((drop_x, drop_y, 0.1, 1.0, 0.3, 18))    # green — dropoff
+        blips.append((drop_x, drop_y, 0.15, 0.55, 1.0, 18))    # green — dropoff
 
     for (wx, wy, r, g, b, size) in blips:
         rel_x = wx - px
@@ -1744,7 +1747,7 @@ def RestartGame():
     global car_x, car_y, car_z, car_speed, car_angle
     global cheat_shoot_timer
     global npc_cars
-    global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint
+    global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint, player_money
     
     npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
 
@@ -1774,6 +1777,7 @@ def RestartGame():
     missions_completed  = 0
     drug_picked_up      = False
     mission_hint        = ""
+    player_money = 0
     
 
 
