@@ -12,6 +12,9 @@ MAP_SIZE = 1000
 ROAD_WIDTH = 100
 SIDEWALK_WIDTH = 22
 BLOCK_SPACING = 300
+STREET_CHARACTER_COUNT = 50
+
+street_characters = []
 
 # radius used for player-vs-building collision checks
 PLAYER_RADIUS = 14
@@ -2963,6 +2966,7 @@ def showScreen():
 
     setupCamera()
     drawWORLD()
+    draw_street_characters()
 
     if not player_in_car:
         draw_player(player_pos,player_angle,first_person,game_over)
@@ -3055,6 +3059,188 @@ def animate():
     update_bullets(delta_time)
     glutPostRedisplay()
     
+def _make_street_character():
+    road_coords = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
+
+    # Actual sidewalk range in your map
+    SIDEWALK_MIN = ROAD_WIDTH / 2 + 3
+    SIDEWALK_MAX = ROAD_WIDTH / 2 + SIDEWALK_WIDTH - 3
+
+    if random.choice([True, False]):
+
+        # Vertical road
+        road_x = float(random.choice(road_coords))
+
+        x = road_x + random.choice([-1, 1]) * random.uniform(
+            SIDEWALK_MIN,
+            SIDEWALK_MAX
+        )
+
+        # Avoid horizontal-road intersections
+        valid_y = False
+
+        while not valid_y:
+            y = float(random.randint(
+                -MAP_SIZE + 80,
+                MAP_SIZE - 80
+            ))
+
+            nearest_horizontal_road = min(
+                road_coords,
+                key=lambda r: abs(y - r)
+            )
+
+            if abs(y - nearest_horizontal_road) > ROAD_WIDTH / 2 + 10:
+                valid_y = True
+
+    else:
+
+        # Horizontal road
+        road_y = float(random.choice(road_coords))
+
+        y = road_y + random.choice([-1, 1]) * random.uniform(
+            SIDEWALK_MIN,
+            SIDEWALK_MAX
+        )
+
+        # Avoid vertical-road intersections
+        valid_x = False
+
+        while not valid_x:
+            x = float(random.randint(
+                -MAP_SIZE + 80,
+                MAP_SIZE - 80
+            ))
+
+            nearest_vertical_road = min(
+                road_coords,
+                key=lambda r: abs(x - r)
+            )
+
+            if abs(x - nearest_vertical_road) > ROAD_WIDTH / 2 + 10:
+                valid_x = True
+
+    angle = float(random.choice([0, 90, 180, 270]))
+
+    shirt_colors = [
+        (0.10, 0.35, 0.75),
+        (0.15, 0.55, 0.20),
+        (0.65, 0.20, 0.15),
+        (0.55, 0.20, 0.65),
+        (0.80, 0.55, 0.10),
+        (0.25, 0.25, 0.25)
+    ]
+
+    pants_colors = [
+        (0.05, 0.05, 0.12),
+        (0.10, 0.15, 0.30),
+        (0.20, 0.20, 0.20),
+        (0.35, 0.20, 0.10)
+    ]
+
+    skin_colors = [
+        (1.0, 0.75, 0.55),
+        (0.85, 0.60, 0.40),
+        (0.65, 0.42, 0.25)
+    ]
+
+    return {
+        "x": x,
+        "y": y,
+        "angle": angle,
+        "shirt": random.choice(shirt_colors),
+        "pants": random.choice(pants_colors),
+        "skin": random.choice(skin_colors)
+    }
+    
+def draw_street_character(character):
+    x = character["x"]
+    y = character["y"]
+
+    glPushMatrix()
+
+    glTranslatef(x, y, 0)
+    glRotatef(character["angle"], 0, 0, 1)
+    glScalef(0.15, 0.15, 0.15)
+
+    # BODY
+    glColor3f(
+        character["shirt"][0],
+        character["shirt"][1],
+        character["shirt"][2]
+    )
+
+    glPushMatrix()
+    glTranslatef(0, 0, 140)
+    glScalef(70, 40, 110)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # HEAD
+    glColor3f(
+        character["skin"][0],
+        character["skin"][1],
+        character["skin"][2]
+    )
+
+    glPushMatrix()
+    glTranslatef(0, 0, 225)
+    glScalef(65, 65, 65)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # LEFT LEG
+    glColor3f(
+        character["pants"][0],
+        character["pants"][1],
+        character["pants"][2]
+    )
+
+    glPushMatrix()
+    glTranslatef(-22, 0, 45)
+    glScalef(22, 32, 80)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # RIGHT LEG
+    glPushMatrix()
+    glTranslatef(22, 0, 45)
+    glScalef(22, 32, 80)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # LEFT ARM
+    glColor3f(
+        character["skin"][0],
+        character["skin"][1],
+        character["skin"][2]
+    )
+
+    glPushMatrix()
+    glTranslatef(-50, 0, 140)
+    glScalef(20, 30, 75)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    # RIGHT ARM
+    glPushMatrix()
+    glTranslatef(50, 0, 140)
+    glScalef(20, 30, 75)
+    glutSolidCube(1)
+    glPopMatrix()
+
+    glPopMatrix()
+
+
+def draw_street_characters():
+    for character in street_characters:
+        draw_street_character(character)
+        
+street_characters = [
+    _make_street_character()
+    for _ in range(STREET_CHARACTER_COUNT)
+]
+
 def RestartGame():
     global player_pos, player_angle
     global game_over, game_score, bullets, enemies
@@ -3064,6 +3250,7 @@ def RestartGame():
     global car_x, car_y, car_z, car_speed, car_angle
     global cheat_shoot_timer
     global npc_cars
+    global street_characters
     global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint, player_money
     global suspicion_level, heat_level, police_active, k9_cooldown
     global car_fuel, fuel_hint
@@ -3073,6 +3260,11 @@ def RestartGame():
     global RUN_SPEED, stamina_level, car_max_speed, car_speed_level
 
     npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
+    
+    street_characters = [
+        _make_street_character()
+        for _ in range(STREET_CHARACTER_COUNT)
+    ]
 
     player_pos = [200, 100, 0]
     player_angle = 0
