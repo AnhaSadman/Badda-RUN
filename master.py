@@ -1772,7 +1772,7 @@ def _make_street_character():
         "pants": random.choice(pants_colors),
         "skin": random.choice(skin_colors)
     }
-
+    #CIVILIAN SPAWN
 def draw_street_character(character):
     x = character["x"]
     y = character["y"]
