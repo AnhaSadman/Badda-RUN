@@ -1656,227 +1656,6 @@ def _make_npc_car():
 
 npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
 
-STREET_CHARACTER_COUNT = 50
-
-street_characters = []
-
-
-def _make_street_character():
-    road_coords = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
-
-    # ---------------------------------------------------------
-    # ACTUAL SIDEWALK RANGE IN YOUR MAP
-    #
-    # Road width = 100
-    # Therefore road edge = 50 units from road center.
-    # Sidewalk width = 22
-    # Therefore sidewalk = 50 to 72 units from center.
-    # ---------------------------------------------------------
-
-    SIDEWALK_MIN = ROAD_WIDTH / 2 + 3
-    SIDEWALK_MAX = ROAD_WIDTH / 2 + SIDEWALK_WIDTH - 3
-
-    if random.choice([True, False]):
-
-        # ==========================================
-        # CHARACTER ON SIDEWALK BESIDE VERTICAL ROAD
-        # ==========================================
-
-        road_x = float(random.choice(road_coords))
-
-        x = road_x + random.choice([-1, 1]) * random.uniform(
-            SIDEWALK_MIN,
-            SIDEWALK_MAX
-        )
-
-        # Don't spawn at a horizontal-road intersection.
-        valid_y = False
-
-        while not valid_y:
-            y = float(random.randint(
-                -MAP_SIZE + 80,
-                MAP_SIZE - 80
-            ))
-
-            nearest_horizontal_road = min(
-                road_coords,
-                key=lambda r: abs(y - r)
-            )
-
-            if abs(y - nearest_horizontal_road) > ROAD_WIDTH / 2 + 10:
-                valid_y = True
-
-    else:
-
-        # ==========================================
-        # CHARACTER ON SIDEWALK BESIDE HORIZONTAL ROAD
-        # ==========================================
-
-        road_y = float(random.choice(road_coords))
-
-        y = road_y + random.choice([-1, 1]) * random.uniform(
-            SIDEWALK_MIN,
-            SIDEWALK_MAX
-        )
-
-        # Don't spawn at a vertical-road intersection.
-        valid_x = False
-
-        while not valid_x:
-            x = float(random.randint(
-                -MAP_SIZE + 80,
-                MAP_SIZE - 80
-            ))
-
-            nearest_vertical_road = min(
-                road_coords,
-                key=lambda r: abs(x - r)
-            )
-
-            if abs(x - nearest_vertical_road) > ROAD_WIDTH / 2 + 10:
-                valid_x = True
-
-    # Random facing direction
-    angle = float(random.choice([0, 90, 180, 270]))
-
-    # Random shirt colors
-    shirt_colors = [
-        (0.10, 0.35, 0.75),
-        (0.15, 0.55, 0.20),
-        (0.65, 0.20, 0.15),
-        (0.55, 0.20, 0.65),
-        (0.80, 0.55, 0.10),
-        (0.25, 0.25, 0.25)
-    ]
-
-    # Random pants colors
-    pants_colors = [
-        (0.05, 0.05, 0.12),
-        (0.10, 0.15, 0.30),
-        (0.20, 0.20, 0.20),
-        (0.35, 0.20, 0.10)
-    ]
-
-    # Random skin colors
-    skin_colors = [
-        (1.0, 0.75, 0.55),
-        (0.85, 0.60, 0.40),
-        (0.65, 0.42, 0.25)
-    ]
-
-    return {
-        "x": x,
-        "y": y,
-        "angle": angle,
-        "shirt": random.choice(shirt_colors),
-        "pants": random.choice(pants_colors),
-        "skin": random.choice(skin_colors)
-    }
-    #CIVILIAN SPAWN
-def draw_street_character(character):
-    x = character["x"]
-    y = character["y"]
-
-    glPushMatrix()
-
-    # Move character to its random street position
-    glTranslatef(x, y, 0)
-
-    # Rotate character randomly
-    glRotatef(character["angle"], 0, 0, 1)
-
-    # Same overall scale style as the player
-    glScalef(0.15, 0.15, 0.15)
-
-    # --------------------------------------------------------
-    # BODY
-    # --------------------------------------------------------
-
-    glColor3f(*character["shirt"])
-
-    glPushMatrix()
-    glTranslatef(0, 0, 140)
-    glScalef(70, 38, 110)
-    glutSolidCube(1)
-    glPopMatrix()
-
-    # --------------------------------------------------------
-    # HEAD
-    # --------------------------------------------------------
-
-    glColor3f(*character["skin"])
-
-    glPushMatrix()
-    glTranslatef(0, 0, 225)
-    gluSphere(gluNewQuadric(), 32, 12, 8)
-    glPopMatrix()
-
-    # --------------------------------------------------------
-    # LEGS
-    # --------------------------------------------------------
-
-    glColor3f(*character["pants"])
-
-    for lx in (-22, 22):
-
-        glPushMatrix()
-
-        glTranslatef(lx, 0, 55)
-
-        gluCylinder(
-            gluNewQuadric(),
-            13,
-            7,
-            80,
-            10,
-            6
-        )
-
-        glPopMatrix()
-
-    # --------------------------------------------------------
-    # ARMS
-    # --------------------------------------------------------
-
-    glColor3f(*character["skin"])
-
-    glPushMatrix()
-    glTranslatef(-45, 0, 135)
-    glRotatef(-90, 1, 0, 0)
-
-    gluCylinder(
-        gluNewQuadric(),
-        9,
-        9,
-        50,
-        10,
-        6
-    )
-
-    glPopMatrix()
-
-    glPushMatrix()
-    glTranslatef(45, 0, 135)
-    glRotatef(-90, 1, 0, 0)
-
-    gluCylinder(
-        gluNewQuadric(),
-        9,
-        9,
-        50,
-        10,
-        6
-    )
-
-    glPopMatrix()
-
-    glPopMatrix()
-
-
-def draw_street_characters():
-    for character in street_characters:
-        draw_street_character(character)
-
 def draw_npc_car(npc):
     """Draw one NPC car at its position using the same geometry as draw_car(),
     but coloured blue.  The steering-wheel / first-person cabin bits are skipped."""
@@ -3187,8 +2966,6 @@ def showScreen():
 
     if not player_in_car:
         draw_player(player_pos,player_angle,first_person,game_over)
-        
-    draw_street_characters()
 
     draw_car()
     draw_k9_zones()
@@ -3287,7 +3064,6 @@ def RestartGame():
     global car_x, car_y, car_z, car_speed, car_angle
     global cheat_shoot_timer
     global npc_cars
-    global street_characters
     global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint, player_money
     global suspicion_level, heat_level, police_active, k9_cooldown
     global car_fuel, fuel_hint
@@ -3297,11 +3073,6 @@ def RestartGame():
     global RUN_SPEED, stamina_level, car_max_speed, car_speed_level
 
     npc_cars = [_make_npc_car() for _ in range(NPC_CAR_COUNT)]
-    
-    street_characters = [
-        _make_street_character()
-        for _ in range(STREET_CHARACTER_COUNT)
-    ]
 
     player_pos = [200, 100, 0]
     player_angle = 0
