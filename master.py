@@ -545,6 +545,12 @@ bullets = []
 bullet_speed = 1000
 bullet_size = 2
 
+# spray mode: 'b' toggles between single-fire and automatic (hold-to-fire) shooting
+spray_mode = False          # False = single fire, True = automatic spray
+is_firing = False           # True while the left mouse button is held down
+spray_fire_timer = 0.0      # counts up toward the next auto-fired shot
+SPRAY_FIRE_RATE = 0.1       # seconds between shots while spraying
+
 # enemies
 enemies = []
 MAX_ENEMIES = 5
@@ -2243,6 +2249,18 @@ def shoot(is_cheat=False):
     })
 
 
+def update_spray_fire(delta_time):
+    # while spray mode is on and the left mouse button is held, keep firing
+    # automatically at a fixed rate instead of requiring repeated clicks
+    global spray_fire_timer
+    if not (spray_mode and is_firing):
+        return
+    spray_fire_timer += delta_time
+    while spray_fire_timer >= SPRAY_FIRE_RATE:
+        spray_fire_timer -= SPRAY_FIRE_RATE
+        shoot()
+
+
 def draw_bullets():
     glColor3f(1, 1, 0)
     for bullet in bullets:
@@ -3176,6 +3194,7 @@ def animate():
     if cheat_mode:
         update_cheat_drive()
 
+    update_spray_fire(delta_time)
     update_bullets(delta_time)
     glutPostRedisplay()
     
@@ -3551,6 +3570,7 @@ def keyboardListener(key, x, y):
     global final_mission_state
     global mission_state, current_mission_idx, missions_completed
     global drug_picked_up, player_money
+    global spray_mode, is_firing, spray_fire_timer
    
 
     nk = key.lower() if isinstance(key, bytes) else key
@@ -3590,6 +3610,9 @@ def keyboardListener(key, x, y):
         gun_follow = True
         locked_camera_angle = 0
         cheat_shoot_timer = 0
+        spray_mode = False
+        is_firing = False
+        spray_fire_timer = 0.0
         player_in_car = False
         car_x, car_y, car_z = 160, 150, 0
         car_angle = 0
@@ -3619,6 +3642,13 @@ def keyboardListener(key, x, y):
                 gun_follow = False
             else:
                 gun_follow = True
+        return
+
+    # b = toggle single-fire / spray (automatic) mode
+    if nk == b'b':
+        spray_mode = not spray_mode
+        if not spray_mode:
+            is_firing = False
         return
 
     # car entry / exit
@@ -3726,6 +3756,7 @@ def specialKeyListener(key, x, y):
 
 def mouseListener(button, state, x, y):
     global first_person
+    global is_firing, spray_fire_timer
 
     if game_menu_open:
         if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
@@ -3748,6 +3779,11 @@ def mouseListener(button, state, x, y):
     if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
         if not game_paused:
             shoot()
+            if spray_mode:
+                is_firing = True
+                spray_fire_timer = 0.0
+    if button == GLUT_LEFT_BUTTON and state == GLUT_UP:
+        is_firing = False
     if button == GLUT_RIGHT_BUTTON and state == GLUT_DOWN:
         if not game_paused:
             first_person = not first_person
