@@ -545,12 +545,6 @@ bullets = []
 bullet_speed = 1000
 bullet_size = 2
 
-# spray mode: 'b' toggles between single-fire and automatic (hold-to-fire) shooting
-spray_mode = False          # False = single fire, True = automatic spray
-is_firing = False           # True while the left mouse button is held down
-spray_fire_timer = 0.0      # counts up toward the next auto-fired shot
-SPRAY_FIRE_RATE = 0.1       # seconds between shots while spraying
-
 # enemies
 enemies = []
 MAX_ENEMIES = 5
@@ -2249,18 +2243,6 @@ def shoot(is_cheat=False):
     })
 
 
-def update_spray_fire(delta_time):
-    # while spray mode is on and the left mouse button is held, keep firing
-    # automatically at a fixed rate instead of requiring repeated clicks
-    global spray_fire_timer
-    if not (spray_mode and is_firing):
-        return
-    spray_fire_timer += delta_time
-    while spray_fire_timer >= SPRAY_FIRE_RATE:
-        spray_fire_timer -= SPRAY_FIRE_RATE
-        shoot()
-
-
 def draw_bullets():
     glColor3f(1, 1, 0)
     for bullet in bullets:
@@ -2810,6 +2792,23 @@ def _forward_from_angle(deg):
     return -math.sin(rad), math.cos(rad)
 
 
+def _camera_safe_distance(pivot_x, pivot_y, fx, fy, max_distance, radius=18):
+    # walks backward from the pivot (player/car) along the camera's offset
+    # direction and stops just before the camera would end up inside a
+    # building, so the third-person camera never clips through walls
+    step = 4
+    distance = 0
+    safe_distance = 0
+    while distance < max_distance:
+        distance += step
+        test_x = pivot_x - fx * distance
+        test_y = pivot_y - fy * distance
+        if is_colliding(test_x, test_y, radius):
+            break
+        safe_distance = distance
+    return safe_distance
+
+
 def setupCamera():
     global camera_radius, camera_angle, camera_height
 
@@ -2864,8 +2863,10 @@ def setupCamera():
         fx, fy = _forward_from_angle(follow_angle)
 
         tpp_distance = 80
-        cam_x = pivot_x - fx * tpp_distance
-        cam_y = pivot_y - fy * tpp_distance
+        cam_radius = 20 if player_in_car else 16
+        safe_distance = _camera_safe_distance(pivot_x, pivot_y, fx, fy, tpp_distance, radius=cam_radius)
+        cam_x = pivot_x - fx * safe_distance
+        cam_y = pivot_y - fy * safe_distance
         cam_z = 60
 
         gluLookAt(
@@ -3194,7 +3195,6 @@ def animate():
     if cheat_mode:
         update_cheat_drive()
 
-    update_spray_fire(delta_time)
     update_bullets(delta_time)
     glutPostRedisplay()
     
@@ -3570,7 +3570,6 @@ def keyboardListener(key, x, y):
     global final_mission_state
     global mission_state, current_mission_idx, missions_completed
     global drug_picked_up, player_money
-    global spray_mode, is_firing, spray_fire_timer
    
 
     nk = key.lower() if isinstance(key, bytes) else key
@@ -3610,9 +3609,6 @@ def keyboardListener(key, x, y):
         gun_follow = True
         locked_camera_angle = 0
         cheat_shoot_timer = 0
-        spray_mode = False
-        is_firing = False
-        spray_fire_timer = 0.0
         player_in_car = False
         car_x, car_y, car_z = 160, 150, 0
         car_angle = 0
@@ -3642,13 +3638,6 @@ def keyboardListener(key, x, y):
                 gun_follow = False
             else:
                 gun_follow = True
-        return
-
-    # b = toggle single-fire / spray (automatic) mode
-    if nk == b'b':
-        spray_mode = not spray_mode
-        if not spray_mode:
-            is_firing = False
         return
 
     # car entry / exit
@@ -3756,7 +3745,6 @@ def specialKeyListener(key, x, y):
 
 def mouseListener(button, state, x, y):
     global first_person
-    global is_firing, spray_fire_timer
 
     if game_menu_open:
         if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
@@ -3779,11 +3767,6 @@ def mouseListener(button, state, x, y):
     if button == GLUT_LEFT_BUTTON and state == GLUT_DOWN:
         if not game_paused:
             shoot()
-            if spray_mode:
-                is_firing = True
-                spray_fire_timer = 0.0
-    if button == GLUT_LEFT_BUTTON and state == GLUT_UP:
-        is_firing = False
     if button == GLUT_RIGHT_BUTTON and state == GLUT_DOWN:
         if not game_paused:
             first_person = not first_person
