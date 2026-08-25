@@ -2966,6 +2966,7 @@ def showScreen():
 
     setupCamera()
     drawWORLD()
+    
     draw_street_characters()
 
     if not player_in_car:
@@ -3015,6 +3016,8 @@ def animate():
     if game_over or game_paused or game_menu_open:
         glutPostRedisplay()
         return
+    
+    update_street_characters(delta_time)
 
     # on-foot movement, uses pressed_keys so w+a, w+d etc. all work together
     if not player_in_car:
@@ -3062,65 +3065,114 @@ def animate():
 def _make_street_character():
     road_coords = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
 
-    # Actual sidewalk range in your map
-    SIDEWALK_MIN = ROAD_WIDTH / 2 + 3
-    SIDEWALK_MAX = ROAD_WIDTH / 2 + SIDEWALK_WIDTH - 3
+    # ---------------------------------------------------------
+    # ACTUAL SIDEWALK POSITION
+    #
+    # ROAD_WIDTH = 100
+    # SIDEWALK_WIDTH = 22
+    #
+    # Road edge = 50 units from road center.
+    # Sidewalk occupies 50 -> 72 units.
+    #
+    # 61 is the middle of the sidewalk.
+    # ---------------------------------------------------------
 
-    if random.choice([True, False]):
+    SIDEWALK_CENTER = ROAD_WIDTH / 2 + SIDEWALK_WIDTH / 2
 
-        # Vertical road
-        road_x = float(random.choice(road_coords))
+    # Keep a small safety distance from road edges
+    STREET_MARGIN = 8
 
-        x = road_x + random.choice([-1, 1]) * random.uniform(
-            SIDEWALK_MIN,
-            SIDEWALK_MAX
-        )
+    SIDEWALK_MIN = SIDEWALK_CENTER - SIDEWALK_WIDTH / 2 + STREET_MARGIN
+    SIDEWALK_MAX = SIDEWALK_CENTER + SIDEWALK_WIDTH / 2 - STREET_MARGIN
 
-        # Avoid horizontal-road intersections
-        valid_y = False
+    # ---------------------------------------------------------
+    # Choose vertical or horizontal sidewalk
+    # ---------------------------------------------------------
 
-        while not valid_y:
-            y = float(random.randint(
-                -MAP_SIZE + 80,
-                MAP_SIZE - 80
-            ))
+    vertical = random.choice([True, False])
 
-            nearest_horizontal_road = min(
-                road_coords,
-                key=lambda r: abs(y - r)
-            )
+    # Choose one road line
+    road_index = random.randint(0, len(road_coords) - 1)
+    road_value = float(road_coords[road_index])
 
-            if abs(y - nearest_horizontal_road) > ROAD_WIDTH / 2 + 10:
-                valid_y = True
+    # Choose which side of the road
+    side = random.choice([-1, 1])
+
+    sidewalk_offset = random.uniform(
+        SIDEWALK_MIN,
+        SIDEWALK_MAX
+    )
+
+    if vertical:
+
+        # Character walks along a vertical sidewalk
+        x = road_value + side * sidewalk_offset
+
+        # Need another road above/below to define the block
+        if road_index == 0:
+            block_low = road_coords[0]
+            block_high = road_coords[1]
+        elif road_index == len(road_coords) - 1:
+            block_low = road_coords[-2]
+            block_high = road_coords[-1]
+        else:
+            if random.choice([True, False]):
+                block_low = road_coords[road_index - 1]
+                block_high = road_coords[road_index]
+            else:
+                block_low = road_coords[road_index]
+                block_high = road_coords[road_index + 1]
+
+        # Walk only between the two road edges.
+        y_min = block_low + ROAD_WIDTH / 2 + STREET_MARGIN
+        y_max = block_high - ROAD_WIDTH / 2 - STREET_MARGIN
+
+        y = random.uniform(y_min, y_max)
+
+        # Vertical movement
+        direction = random.choice([-1, 1])
 
     else:
 
-        # Horizontal road
-        road_y = float(random.choice(road_coords))
+        # Character walks along a horizontal sidewalk
+        y = road_value + side * sidewalk_offset
 
-        y = road_y + random.choice([-1, 1]) * random.uniform(
-            SIDEWALK_MIN,
-            SIDEWALK_MAX
-        )
+        # Need another road left/right to define the block
+        if road_index == 0:
+            block_low = road_coords[0]
+            block_high = road_coords[1]
+        elif road_index == len(road_coords) - 1:
+            block_low = road_coords[-2]
+            block_high = road_coords[-1]
+        else:
+            if random.choice([True, False]):
+                block_low = road_coords[road_index - 1]
+                block_high = road_coords[road_index]
+            else:
+                block_low = road_coords[road_index]
+                block_high = road_coords[road_index + 1]
 
-        # Avoid vertical-road intersections
-        valid_x = False
+        # Walk only between the two road edges.
+        x_min = block_low + ROAD_WIDTH / 2 + STREET_MARGIN
+        x_max = block_high - ROAD_WIDTH / 2 - STREET_MARGIN
 
-        while not valid_x:
-            x = float(random.randint(
-                -MAP_SIZE + 80,
-                MAP_SIZE - 80
-            ))
+        x = random.uniform(x_min, x_max)
 
-            nearest_vertical_road = min(
-                road_coords,
-                key=lambda r: abs(x - r)
-            )
+        # Horizontal movement
+        direction = random.choice([-1, 1])
 
-            if abs(x - nearest_vertical_road) > ROAD_WIDTH / 2 + 10:
-                valid_x = True
+    angle = 0
 
-    angle = float(random.choice([0, 90, 180, 270]))
+    if vertical:
+        if direction == 1:
+            angle = 0
+        else:
+            angle = 180
+    else:
+        if direction == 1:
+            angle = 90
+        else:
+            angle = 270
 
     shirt_colors = [
         (0.10, 0.35, 0.75),
@@ -3148,9 +3200,26 @@ def _make_street_character():
         "x": x,
         "y": y,
         "angle": angle,
+
         "shirt": random.choice(shirt_colors),
         "pants": random.choice(pants_colors),
-        "skin": random.choice(skin_colors)
+        "skin": random.choice(skin_colors),
+
+        # Movement information
+        "vertical": vertical,
+        "direction": direction,
+
+        # Much slower than player's 8.0 walking speed
+        "speed": 0.7,
+
+        # Limits of the sidewalk segment
+        "min_pos": (
+            y_min if vertical else x_min
+        ),
+
+        "max_pos": (
+            y_max if vertical else x_max
+        )
     }
     
 def draw_street_character(character):
@@ -3236,6 +3305,45 @@ def draw_street_characters():
     for character in street_characters:
         draw_street_character(character)
         
+def update_street_characters(delta_time):
+    for character in street_characters:
+
+        # -----------------------------------------------------
+        # Move along the sidewalk
+        # -----------------------------------------------------
+
+        step = character["speed"] * delta_time * 60
+
+        if character["vertical"]:
+
+            character["y"] += character["direction"] * step
+
+            # Reached end of sidewalk segment
+            if character["y"] >= character["max_pos"]:
+                character["y"] = character["max_pos"]
+                character["direction"] = -1
+                character["angle"] = 180
+
+            elif character["y"] <= character["min_pos"]:
+                character["y"] = character["min_pos"]
+                character["direction"] = 1
+                character["angle"] = 0
+
+        else:
+
+            character["x"] += character["direction"] * step
+
+            # Reached end of sidewalk segment
+            if character["x"] >= character["max_pos"]:
+                character["x"] = character["max_pos"]
+                character["direction"] = -1
+                character["angle"] = 270
+
+            elif character["x"] <= character["min_pos"]:
+                character["x"] = character["min_pos"]
+                character["direction"] = 1
+                character["angle"] = 90
+               
 street_characters = [
     _make_street_character()
     for _ in range(STREET_CHARACTER_COUNT)
