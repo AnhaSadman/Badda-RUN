@@ -271,7 +271,7 @@ def draw_brac_university():
     bx, by = BRAC_POS
     bw, bh = BRAC_W, BRAC_H
 
-    # ── main building body — covers the exact measured footprint ──────────────
+    #main building body — covers the exact measured footprint
     draw_cube(bx, by, 100, bw, bh, 200, (0.88, 0.94, 0.84))   # tall white-green body
 
     # dark base band
@@ -283,7 +283,7 @@ def draw_brac_university():
     # roof structure
     draw_cube(bx, by, 210, bw * 0.6, bh * 0.3, 14, (0.24, 0.44, 0.18))
 
-    # ── BRAC UNIVERSITY banner — long green slab across the south face ────────
+    #BRAC UNIVERSITY banner — long green slab across the south face
     # south face is at y = by - bh/2
     south_y = by - bh / 2
     draw_cube(bx, south_y - 3, 75, bw + 10, 6, 22, (0.10, 0.40, 0.10))
@@ -293,7 +293,7 @@ def draw_brac_university():
     # BRAC UNIVERSITY lettering, sitting on the green banner
     draw_text_3d(bx - 60, south_y - 6, 78, "BRAC UNIVERSITY")
 
-    # ── gate opening in south face ────────────────────────────────────────────
+    #gate opening in south face
     # left pillar
     draw_cube(bx - 22, south_y - 2, 30, 14, 6, 60, (0.30, 0.52, 0.24))
     # right pillar
@@ -301,19 +301,19 @@ def draw_brac_university():
     # arch over gate
     draw_cube(bx, south_y - 2, 64, 58, 6, 10, (0.30, 0.52, 0.24))
 
-    # ── windows on south face ─────────────────────────────────────────────────
+    #
     for wx2 in (-45, 0, 45):
         for wz in (25, 60, 100, 140, 175):
             draw_cube(bx + wx2, south_y - 1, wz, 18, 2, 20, (0.08, 0.10, 0.12))
             draw_cube(bx + wx2, south_y - 2, wz, 14, 2, 16, (0.30, 0.67, 0.88))
 
-    # ── corner columns ────────────────────────────────────────────────────────
+    #corner columns
     for cx2 in (-bw/2 + 8, bw/2 - 8):
         for cy2 in (-bh/2 + 8, bh/2 - 8):
             draw_cube(bx + cx2, by + cy2, 102, 12, 12, 204, (0.75, 0.88, 0.70))
 
 
-    # ── bomb plant marker — outside the gate, while the bomb still needs planting ─
+    #bomb plant marker — outside the gate, while the bomb still needs planting
     if final_mission_state == "plant_bomb":
         gx, gy = BRAC_GATE_POS
         glPushMatrix()
@@ -327,7 +327,7 @@ def draw_brac_university():
         gluCylinder(gluNewQuadric(), 2, 2, 58, 8, 2)
         glPopMatrix()
 
-    # ── planted dynamite — red cylinder + fuse, sitting outside the gate ────────
+    #planted dynamite — red cylinder + fuse, sitting outside the gate
     if bomb_planted:
         gx, gy = BRAC_GATE_POS
         glPushMatrix()
@@ -721,7 +721,7 @@ def draw_k9_dog(x, y):
             glutSolidCube(1)
             glPopMatrix()
 
-    # body — sits on top of legs
+    # body sits on top of legs
     glColor3f(*BROWN)
     glPushMatrix()
     glTranslatef(0, 0, 6)
@@ -969,7 +969,6 @@ def draw_final_police_cars():
 
 def update_final_mission(delta_time):
     # game_over must be declared global here too, otherwise these assignments
-    # only create a local variable and the real game never ends
     global final_mission_state, bomb_picked_up, bomb_planted
     global building_cops, building_cops_spawned, game_over, bomb_cooldown_timer
     
@@ -987,7 +986,7 @@ def update_final_mission(delta_time):
     bx, by = BRAC_POS
     sx, sy, _, _ = interactive_zones["safe_house"]
 
-    # ── phase 1: pick up the bomb ──────────────────────────────────────────────
+    #phase 1: pick up the bomb
     if final_mission_state == "get_bomb":
         dist = math.hypot(px - BOMB_PICKUP_POS[0], py - BOMB_PICKUP_POS[1])
         mission_hint = f"FINAL: Pick up the bomb  ({dist:.0f} away)"
@@ -996,7 +995,7 @@ def update_final_mission(delta_time):
             final_mission_state = "drive_to_brac"
             mission_hint        = "FINAL: Drive to BRAC University!"
 
-    # ── phase 2: drive to the marker outside the BRAC gate ─────────────────────
+    #phase 2: drive to the marker outside the BRAC gate
     elif final_mission_state == "drive_to_brac":
         dist = math.hypot(px - BRAC_GATE_POS[0], py - BRAC_GATE_POS[1])
         mission_hint = f"FINAL: Reach the marker outside BRAC University  ({dist:.0f} away)"
@@ -1004,7 +1003,7 @@ def update_final_mission(delta_time):
             final_mission_state = "plant_bomb"
             mission_hint        = "FINAL: Press F to plant the bomb!"
 
-    # ── phase 3: plant the bomb at the marker ───────────────────────────────────
+    #phase 3: plant the bomb at the marker
     elif final_mission_state == "plant_bomb":
         dist = math.hypot(px - BRAC_GATE_POS[0], py - BRAC_GATE_POS[1])
         if dist < BRAC_GATE_RADIUS:
@@ -1012,14 +1011,14 @@ def update_final_mission(delta_time):
         else:
             final_mission_state = "drive_to_brac"  # walked away from the marker
 
-    # ── phase 4: cops incoming — short delay before they respond to the blast ──
+    #phase 4: cops incoming — short delay before they respond to the blast 
     elif final_mission_state == "cops_incoming":
         bomb_cooldown_timer -= delta_time
         mission_hint = f"FINAL: BOMB PLANTED! Cops incoming in {max(0, bomb_cooldown_timer):.1f}s..."
         if bomb_cooldown_timer <= 0:
             final_mission_state = "fight_out"
 
-    # ── phase 5: fight out — cops attack, player must kill them ───────────────
+    #phase 5: fight out — cops attack, player must kill them
     elif final_mission_state == "fight_out":
         if not building_cops_spawned:
             building_cops_spawned = True
@@ -1080,7 +1079,7 @@ def update_final_mission(delta_time):
                 game_over = True
                 return
 
-    # ── phase 6: escape to safe house ─────────────────────────────────────────
+    #phase 6: escape to safe house
     elif final_mission_state == "escape":
         mission_hint = "FINAL: Reach the Safe House to WIN!"
         _update_final_police_cars(delta_time, px, py)
@@ -1215,7 +1214,7 @@ def update_heat(delta_time):
     if not police_active:
         return
 
-    # ── road-following pathfinder ──────────────────────────────────────────────
+    #road-following pathfinde
     ROAD_COORDS    = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
     SNAP_THRESHOLD = 10
     limit          = MAP_SIZE - 50
@@ -1302,14 +1301,14 @@ def update_heat(delta_time):
                         police_x = float(min(ROAD_COORDS,
                                              key=lambda r: abs(r - police_x)))
 
-    # ── catch check — game over if police touches player / player car ──────────
+    #catch check — game over if police touches player / player car
     catch_radius = 40 if player_in_car else 22
     if math.hypot(px - police_x, py - police_y) < catch_radius:
         game_over = True
         _clear_heat()
         return
 
-    # ── safe house escape ──────────────────────────────────────────────────────
+    #safe house escape
     sx, sy, _, _ = interactive_zones["safe_house"]
     if math.hypot(px - sx, py - sy) < SAFEHOUSE_ESCAPE:
         _clear_heat()
@@ -1499,7 +1498,7 @@ def update_cheat_drive():
             cheat_mode = False
         return
 
-    # ── determine axis of travel ──────────────────────────────────────────────
+    #determine axis of travel
     # look at where we came from vs where we're going to decide H or V travel
     if abs(dx) > abs(dy):
         # travelling horizontally — lock Y to current road line
@@ -3064,19 +3063,7 @@ def animate():
     
 def _make_street_character():
     road_coords = list(range(-MAP_SIZE, MAP_SIZE + 1, BLOCK_SPACING))
-
-    # ---------------------------------------------------------
     # ACTUAL SIDEWALK POSITION
-    #
-    # ROAD_WIDTH = 100
-    # SIDEWALK_WIDTH = 22
-    #
-    # Road edge = 50 units from road center.
-    # Sidewalk occupies 50 -> 72 units.
-    #
-    # 61 is the middle of the sidewalk.
-    # ---------------------------------------------------------
-
     SIDEWALK_CENTER = ROAD_WIDTH / 2 + SIDEWALK_WIDTH / 2
 
     # Keep a small safety distance from road edges
@@ -3085,9 +3072,7 @@ def _make_street_character():
     SIDEWALK_MIN = SIDEWALK_CENTER - SIDEWALK_WIDTH / 2 + STREET_MARGIN
     SIDEWALK_MAX = SIDEWALK_CENTER + SIDEWALK_WIDTH / 2 - STREET_MARGIN
 
-    # ---------------------------------------------------------
     # Choose vertical or horizontal sidewalk
-    # ---------------------------------------------------------
 
     vertical = random.choice([True, False])
 
@@ -3307,10 +3292,7 @@ def draw_street_characters():
         
 def update_street_characters(delta_time):
     for character in street_characters:
-
-        # -----------------------------------------------------
         # Move along the sidewalk
-        # -----------------------------------------------------
 
         step = character["speed"] * delta_time * 60
 
