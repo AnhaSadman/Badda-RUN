@@ -78,6 +78,26 @@ def is_colliding(x, y, radius):
     return False
 
 
+def get_building_boxes():
+    # returns only the actual city buildings (not the gas station / safe house),
+    # used for car-vs-building damage detection
+    return [(bx, by, bw, bh) for bx, by, bw, bh, r, g, b, h in buildings]
+
+
+def is_colliding_building(x, y, radius):
+    # circle-vs-rectangle test against city buildings only
+    for bx, by, bw, bh in get_building_boxes():
+        half_w = bw / 2
+        half_h = bh / 2
+        closest_x = max(bx - half_w, min(x, bx + half_w))
+        closest_y = max(by - half_h, min(y, by + half_h))
+        dx = x - closest_x
+        dy = y - closest_y
+        if dx * dx + dy * dy < radius * radius:
+            return True
+    return False
+
+
 def draw_cube(x, y, z, sx, sy, sz, color):
     glPushMatrix()
     glColor3f(*color)
@@ -586,6 +606,12 @@ FUEL_COST_PER_L   = 2       # $ per unit of fuel
 GAS_STATION_RADIUS = 110    # how close car must be to refuel
 fuel_hint         = ""      # shown near gas station
 
+# car health (damaged by colliding with buildings)
+car_health              = 100
+CAR_HEALTH_MAX          = 100
+CAR_HEALTH_DAMAGE       = 5      # lost per collision with a building
+car_was_colliding_building = False   # tracks previous frame so damage is applied once per hit, not every frame
+
 
 
 #SHOP
@@ -599,6 +625,7 @@ shop_buttons = {}
 
 SHOP_REFUEL_PRICE     = 10
 SUSPICION_CLEAR_PRICE = 30
+SHOP_REPAIR_PRICE     = 2
 
 BULLET_DAMAGE_BASE      = 1
 BULLET_DAMAGE_MAX_LEVEL = 3
@@ -2081,6 +2108,7 @@ def draw_steering_wheel(angle_deg):
 
 def update_car():
     global car_x, car_y, car_speed, car_angle,car_fuel
+    global car_health, car_was_colliding_building
 
     if not player_in_car:
         return
@@ -2133,7 +2161,15 @@ def update_car():
         car_speed = 0
     else:
         car_y = test_cy
-        
+
+    # building collision damage -- only applied once per hit (on the frame the
+    # car first touches a building), not continuously while pressed against it
+    hit_building = (is_colliding_building(test_cx, car_y, CAR_RADIUS) or
+                    is_colliding_building(car_x, test_cy, CAR_RADIUS))
+    if hit_building and not car_was_colliding_building:
+        car_health = max(0, car_health - CAR_HEALTH_DAMAGE)
+    car_was_colliding_building = hit_building
+
     # fuel drain
     if abs(car_speed) > 0.5:
         car_fuel = max(0.0, car_fuel - CAR_FUEL_DRAIN)
@@ -2330,6 +2366,72 @@ def _draw_fuel_bar():
     # label drawn after matrix restore
     draw_text(bx, by + bar_h + 4, f"FUEL  {car_fuel:.0f}%")
 
+
+def _draw_car_health_bar():
+    """Draws a horizontal car-health bar just above the fuel bar."""
+    bar_w  = 160
+    bar_h  = 16
+    margin = 20
+    bx     = screen_width - bar_w - margin
+    by     = margin + 60 + bar_h + 22   # stacked above the fuel bar
+
+    fill = (car_health / CAR_HEALTH_MAX) * bar_w
+
+    # choose colour: green -> yellow -> red as health drops
+    if car_health > 50:
+        rc, gc = 0.1, 0.85
+    elif car_health > 25:
+        rc, gc = 0.95, 0.75
+    else:
+        rc, gc = 0.95, 0.10
+
+    glMatrixMode(GL_PROJECTION)
+    glPushMatrix()
+    glLoadIdentity()
+    gluOrtho2D(0, screen_width, 0, screen_height)
+    glMatrixMode(GL_MODELVIEW)
+    glPushMatrix()
+    glLoadIdentity()
+    glDisable(GL_DEPTH_TEST)
+
+    # dark background
+    glColor3f(0.15, 0.15, 0.15)
+    glBegin(GL_QUADS)
+    glVertex2f(bx,        by)
+    glVertex2f(bx + bar_w, by)
+    glVertex2f(bx + bar_w, by + bar_h)
+    glVertex2f(bx,        by + bar_h)
+    glEnd()
+
+    # coloured fill
+    glColor3f(rc, gc, 0.1)
+    glBegin(GL_QUADS)
+    glVertex2f(bx,          by)
+    glVertex2f(bx + fill,   by)
+    glVertex2f(bx + fill,   by + bar_h)
+    glVertex2f(bx,          by + bar_h)
+    glEnd()
+
+    # white border
+    glColor3f(1, 1, 1)
+    glLineWidth(2)
+    glBegin(GL_LINE_LOOP)
+    glVertex2f(bx,        by)
+    glVertex2f(bx + bar_w, by)
+    glVertex2f(bx + bar_w, by + bar_h)
+    glVertex2f(bx,        by + bar_h)
+    glEnd()
+    glLineWidth(1)
+
+    glEnable(GL_DEPTH_TEST)
+    glPopMatrix()
+    glMatrixMode(GL_PROJECTION)
+    glPopMatrix()
+    glMatrixMode(GL_MODELVIEW)
+
+    # label drawn after matrix restore
+    draw_text(bx, by + bar_h + 4, f"HEALTH  {car_health:.0f}%")
+
 def draw_text(x, y, text, font=GLUT_BITMAP_HELVETICA_18):
     if screen_width == 0 or screen_height == 0:
         return
@@ -2369,6 +2471,8 @@ def show_status():
 
         # fuel bar
         _draw_fuel_bar()
+        # car health bar
+        _draw_car_health_bar()
 
     if fuel_hint:
         draw_text(screen_width // 2 - len(fuel_hint) * 5,
@@ -2486,6 +2590,9 @@ def draw_shop_screen():
         ("refuel", "Refuel Car",
          "Tank is full" if car_fuel >= CAR_FUEL_MAX else f"{car_fuel:.0f}% fuel",
          "FULL" if car_fuel >= CAR_FUEL_MAX else f"${SHOP_REFUEL_PRICE}"),
+        ("repair", "Repair Vehicle",
+         "Car is undamaged" if car_health >= CAR_HEALTH_MAX else f"{car_health:.0f}% health",
+         "FULL" if car_health >= CAR_HEALTH_MAX else f"${SHOP_REPAIR_PRICE}"),
         ("bullet", "Bullet Damage  (one-shot cops)",
          f"Level {bullet_damage_level}/{BULLET_DAMAGE_MAX_LEVEL}",
          "MAXED" if bullet_damage_level >= BULLET_DAMAGE_MAX_LEVEL
@@ -2590,6 +2697,7 @@ def draw_shop_screen():
 def handle_shop_click(item_id):
     # runs when a shop row is clicked
     global player_money, shop_message, car_fuel
+    global car_health
     global bullet_damage, bullet_damage_level
     global RUN_SPEED, stamina_level
     global car_max_speed, car_speed_level
@@ -2603,6 +2711,16 @@ def handle_shop_click(item_id):
             player_money -= SHOP_REFUEL_PRICE
             car_fuel = CAR_FUEL_MAX
             shop_message = "Full tank!"
+
+    elif item_id == "repair":
+        if car_health >= CAR_HEALTH_MAX:
+            shop_message = "Car is already undamaged!"
+        elif player_money < SHOP_REPAIR_PRICE:
+            shop_message = f"Not enough money! Need ${SHOP_REPAIR_PRICE}"
+        else:
+            player_money -= SHOP_REPAIR_PRICE
+            car_health = CAR_HEALTH_MAX
+            shop_message = "Vehicle repaired!"
 
     elif item_id == "bullet":
         if bullet_damage_level >= BULLET_DAMAGE_MAX_LEVEL:
@@ -3344,6 +3462,7 @@ def RestartGame():
     global mission_state, current_mission_idx, missions_completed, drug_picked_up, mission_hint, player_money
     global suspicion_level, heat_level, police_active, k9_cooldown
     global car_fuel, fuel_hint
+    global car_health, car_was_colliding_building
     global final_mission_state, bomb_picked_up, bomb_planted, bomb_cooldown_timer
     global building_cops, building_cops_spawned, final_police_cars
     global shop_open, shop_message, bullet_damage, bullet_damage_level
@@ -3372,6 +3491,10 @@ def RestartGame():
     
     car_fuel  = CAR_FUEL_MAX
     fuel_hint = ""
+
+    #car health
+    car_health                 = CAR_HEALTH_MAX
+    car_was_colliding_building = False
 
     #shop / upgrades
     shop_open           = False
